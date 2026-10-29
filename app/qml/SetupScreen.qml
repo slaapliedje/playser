@@ -8,7 +8,9 @@ FocusScope {
     id: root
 
     required property SystemCheck check
+    property bool passthrough: false
     signal done()
+    signal passthroughToggled()
 
     visible: false
 
@@ -53,6 +55,20 @@ FocusScope {
                 : "SteamOS doesn't load the Linux \"sg\" driver MakeMKV needs. Once, in Desktop Mode, open "
                   + "Konsole and run:\n    sudo modprobe sg\n    echo sg | sudo tee /etc/modules-load.d/sg.conf\n"
                   + "then unplug the drive and plug it back in."
+        },
+        {
+            ok: !root.passthrough ? null : !check.passthroughRule ? false
+                : check.passthroughRulePending ? null : true,
+            title: "Audio passthrough (optional)",
+            text: !root.passthrough
+                ? "Off: audio is decoded and sent as PCM (up to 7.1), which works with any TV or receiver. "
+                  + "Turn on to send Dolby and DTS tracks to your receiver as they are, for Atmos and DTS:X."
+                : !check.passthroughRule
+                ? "On, but Disc Player couldn't change the audio setting it needs, so audio will be decoded instead."
+                : check.passthroughRulePending
+                ? "On. Restart once to finish: SteamOS keeps a silent stream on the audio output, "
+                  + "and the change that moves it applies after a restart."
+                : "On: Dolby and DTS go to your receiver as they are. If it can't take one, that track is decoded instead."
         },
     ]
 
@@ -115,7 +131,7 @@ FocusScope {
         }
     }
 
-    // Check again | Done, left/right to choose
+    // Check again | Passthrough | Done, left/right to choose
     ListView {
         id: buttons
         anchors { left: parent.left; bottom: parent.bottom; margins: Theme.margin }
@@ -123,8 +139,8 @@ FocusScope {
         height: 72 * Theme.scale
         orientation: ListView.Horizontal
         spacing: Theme.spacing
-        model: ["Check again", "Done"]
-        currentIndex: 1
+        model: ["Check again", "passthrough", "Done"]
+        currentIndex: 2
         delegate: Rectangle {
             required property string modelData
             required property int index
@@ -138,11 +154,19 @@ FocusScope {
             Text {
                 id: label
                 anchors.centerIn: parent
-                text: modelData
+                text: modelData !== "passthrough" ? modelData
+                    : root.passthrough ? "Passthrough: On" : "Passthrough: Off"
                 color: Theme.text
                 font.pixelSize: Theme.fontMedium
             }
         }
-        Keys.onReturnPressed: currentIndex === 0 ? root.check.refresh() : root.close()
+        Keys.onReturnPressed: {
+            if (currentIndex === 0)
+                root.check.refresh()
+            else if (currentIndex === 1)
+                root.passthroughToggled()
+            else
+                root.close()
+        }
     }
 }

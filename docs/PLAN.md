@@ -223,10 +223,22 @@ Status (2026-10-28), `app/`:
   the HDMI sink, which SteamOS's `speech-dispatcher-dummy` stream blocks
   ("cannot link exclusively"). Verified with the box wired straight to the
   VSX-1130: Dolby Digital and Dolby TrueHD shown on the receiver.
-- ⬜ Passthrough as an opt-in setting: a one-time WirePlumber rule keeping
-  `speech-dispatcher-dummy` off HDMI, offered on the setup screen like the
-  `sg` fix; check whether Steam's own UI-sound stream also takes the sink
-  during playback. Add the dummy-stream blocker to the SteamOS issue.
+- ✅ **Passthrough setting** (2026-10-29): setup screen "Passthrough:
+  On/Off" (QtCore Settings `passthrough`) sets mpv `audio-spdif` to
+  `ac3,eac3,dts-hd,truehd`; a codec the receiver can't take falls back to
+  decoding through the audio watchdog. Turning it on writes
+  `~/.config/pipewire/pipewire-pulse.conf.d/90-discplayer-passthrough.conf`
+  (Flatpak grants only that folder): a `pulse.rules` entry giving
+  `application.process.binary = "sd_dummy"` `node.autoconnect = false`,
+  so only speech-dispatcher's silent dummy stays unconnected (real voices,
+  e.g. a screen reader's espeak-ng, still connect; checked with stand-in
+  streams). PipeWire reads it at start, so the screen says "restart once"
+  until the boot ID changes. Off removes the file. Verified on the box:
+  toggled from the setup screen, then TrueHD and AC-3 bitstreamed with no
+  test overrides.
+- ⬜ Confirm after a reboot: `sd_dummy` comes up unconnected, and whether
+  Steam's own UI-sound stream takes the sink during playback. Add the
+  dummy-stream blocker to the SteamOS issue.
 - ⬜ UHD vs Blu-ray detection (LibreDrive check on the setup screen).
 - ✅ **An installed MakeMKV Flatpak is preferred** (2026-10-29): the
   manifest grants read access to `com.makemkv.MakeMKV`'s install folder

@@ -33,6 +33,9 @@ finish-args:
   # updates apply without rebuilding this app (see setupDecryption())
   - --filesystem=~/.local/share/flatpak/app/com.makemkv.MakeMKV:ro
   - --filesystem=/var/lib/flatpak/app/com.makemkv.MakeMKV:ro
+  # audio passthrough (opt-in, setup screen): a rule keeping SteamOS's silent
+  # speech-dispatcher stream off the output, which passthrough needs to itself
+  - --filesystem=xdg-config/pipewire/pipewire-pulse.conf.d:create
 
 cleanup:
   - '*.la'

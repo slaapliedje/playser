@@ -3,8 +3,40 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSettings>
 #include <fcntl.h>
 #include <unistd.h>
+
+namespace {
+
+// Passthrough needs the audio output to itself (WirePlumber won't link it
+// "exclusively" next to another stream), and SteamOS keeps speech-
+// dispatcher's silent dummy module connected to it. This keeps only that
+// stream unconnected; real voices (screen readers) are unaffected. The host
+// path: the Flatpak grants just this folder.
+QString passthroughRulePath()
+{
+    return QDir::home().filePath(".config/pipewire/pipewire-pulse.conf.d/90-discplayer-passthrough.conf");
+}
+
+const char kPassthroughRule[] =
+    "# Disc Player: keep speech-dispatcher's silent dummy stream from holding the audio\n"
+    "# output, so Dolby/DTS passthrough can use it exclusively. Delete to undo.\n"
+    "pulse.rules = [\n"
+    "    {\n"
+    "        matches = [ { application.process.binary = \"sd_dummy\" } ]\n"
+    "        actions = { update-props = { node.autoconnect = false } }\n"
+    "    }\n"
+    "]\n";
+
+// changes with every boot; PipeWire reads the rule when it starts
+QByteArray bootId()
+{
+    QFile f("/proc/sys/kernel/random/boot_id");
+    return f.open(QIODevice::ReadOnly) ? f.readAll().trimmed() : QByteArray();
+}
+
+} // namespace
 
 SystemCheck::SystemCheck(QObject *parent) : QObject(parent)
 {
@@ -57,5 +89,28 @@ void SystemCheck::refresh()
     }
     if (m_opticalDrives == 0)
         m_scsiGeneric = false;
+
+    m_passthroughRule = QFileInfo::exists(passthroughRulePath());
+    m_passthroughRulePending = m_passthroughRule
+        && QSettings().value("audio/passthroughRuleBoot").toByteArray() == bootId();
     emit changed();
+}
+
+bool SystemCheck::setPassthroughRule(bool installed)
+{
+    const QString path = passthroughRulePath();
+    bool ok = true;
+    if (!installed) {
+        ok = !QFileInfo::exists(path) || QFile::remove(path);
+    } else if (!QFileInfo::exists(path)) {
+        QDir().mkpath(QFileInfo(path).path());
+        QFile f(path);
+        ok = f.open(QIODevice::WriteOnly) && f.write(kPassthroughRule) == qint64(sizeof kPassthroughRule - 1);
+        if (ok)
+            QSettings().setValue("audio/passthroughRuleBoot", bootId());
+    }
+    if (!ok)
+        qWarning("audio: couldn't %s %s", installed ? "write" : "remove", qPrintable(path));
+    refresh();
+    return ok;
 }

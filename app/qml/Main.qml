@@ -25,6 +25,15 @@ FocusScope {
     Settings {
         id: settings
         property bool setupSeen: false
+        // send Dolby/DTS to the receiver undecoded (setup screen)
+        property bool passthrough: false
+        onPassthroughChanged: root.applyAudio()
+    }
+
+    // codecs mpv passes through when on; one the receiver can't take fails
+    // to open and the audio watchdog (Mpv) falls back to decoding
+    function applyAudio() {
+        mpv.setMpvProperty("audio-spdif", settings.passthrough ? "ac3,eac3,dts-hd,truehd" : "")
     }
 
     function showSetup() {
@@ -32,6 +41,7 @@ FocusScope {
     }
 
     Component.onCompleted: {
+        applyAudio()
         // first run, or something Blu-ray playback needs went missing
         if (!settings.setupSeen || (system.opticalDrives > 0 && !system.ready))
             showSetup()
@@ -88,6 +98,11 @@ FocusScope {
         id: setup
         anchors.fill: parent
         check: system
+        passthrough: settings.passthrough
+        onPassthroughToggled: {
+            settings.passthrough = !settings.passthrough
+            system.setPassthroughRule(settings.passthrough)
+        }
         onDone: {
             settings.setupSeen = true
             home.forceActiveFocus()
