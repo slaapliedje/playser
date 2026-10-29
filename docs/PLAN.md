@@ -236,9 +236,14 @@ Status (2026-10-28), `app/`:
   until the boot ID changes. Off removes the file. Verified on the box:
   toggled from the setup screen, then TrueHD and AC-3 bitstreamed with no
   test overrides.
-- ⬜ Confirm after a reboot: `sd_dummy` comes up unconnected, and whether
-  Steam's own UI-sound stream takes the sink during playback. Add the
-  dummy-stream blocker to the SteamOS issue.
+- ✅ **Confirmed after a reboot** (2026-10-29): no `sd_dummy` link, and
+  *Back to the Future* (Blu-ray, not in TheDiscDB; libbluray picked the
+  1:56:05 main title) played its DTS-HD MA 5.1 as bitstream: the VSX-1130
+  showed DTS-HD MSTR with L C R SL SR LFE.
+- ⬜ Steam's UI audio (`steamwebhelper`, "Chromium") holds the sink for
+  ~18 s after any Steam sound, which blocks passthrough in that window;
+  retry passthrough once after a short wait before falling back to
+  decoding. Add the dummy-stream blocker to the SteamOS issue.
 - ⬜ UHD vs Blu-ray detection (LibreDrive check on the setup screen).
 - ✅ **An installed MakeMKV Flatpak is preferred** (2026-10-29): the
   manifest grants read access to `com.makemkv.MakeMKV`'s install folder
