@@ -202,16 +202,17 @@ Status (2026-10-28), `app/`:
 - ⬜ Bundle a UI font: the Flatpak's runtime fonts lack the circled button
   letters (Ⓐ Ⓑ) used in hints; better still, SDL3 gamepad-type glyphs.
 - ⬜ UHD vs Blu-ray detection; audio-output failure → PCM fallback.
-- 🔶 MakeMKV is bundled (2026-10-29): makemkv-oss (LGPL) and makemkv-bin
+- ✅ MakeMKV is bundled (2026-10-29): makemkv-oss (LGPL) and makemkv-bin
   (redistribution allowed with the EULA referenced; Flathub precedent
   `com.makemkv.MakeMKV`) are Flatpak modules. A Flatpak can't depend on
   another app, only on runtimes/extensions. makemkv-oss 2.0.0 doesn't
   build against FFmpeg 9, so it's built before our FFmpeg and links the
   runtime's (libavcodec 61). libmmbd only looks for makemkvcon in
   /usr/bin and /usr/local/bin, so the app sets `MAKEMKVCON=/app/bin/
-  makemkvcon`. Bundled makemkvcon reads the disc in the sandbox; full
-  playback with the bundled copy not yet confirmed: the Optiarc began
-  returning MEDIUM ERROR (NO SEEK COMPLETE) on the Looney Tunes disc.
+  makemkvcon`. Verified on the box: Looney Tunes episode 2 opens in
+  7.7 s with only the bundled MakeMKV and the user's key in ~/.MakeMKV.
+  (A run of MEDIUM ERROR / NO SEEK COMPLETE on the Optiarc's inner tracks
+  was cured by unplugging and replugging it after loading `sg`.)
 - ⬜ First-run MakeMKV setup (key entry, `sg` check) and LibreDrive check. Learned on the box
   (2026-10-29, MakeMKV 2.0.0 copied in for testing):
   - libbluray appends `.so.0` itself: `LIBAACS_PATH=<dir>/libmmbd`.
