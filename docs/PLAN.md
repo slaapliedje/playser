@@ -93,13 +93,25 @@ all UHD discs).
 
 ## Phases
 
-### Phase 0 — Risk spikes
-- **0a.** libmpv + libbluray + libmmbd plays a UHD main title via `bd://`
-  (Garuda desktop).
-- **0b.** Menu feasibility: libdvdnav → libmpv via stream_cb, render a DVD
-  menu with button highlights, navigate and activate buttons. *Biggest risk.*
-- **0c.** Same libmpv app under gamescope on the SteamOS box: HDR output and
-  TrueHD/DTS-HD passthrough to an AVR.
+### Phase 0 — Risk spikes (done 2026-10-28; details in `spike-results.md`)
+- **0a. ✅** libmpv + libbluray + libmmbd plays a UHD main title via `bd://`
+  (Garuda desktop). Integration is just `LIBAACS_PATH`/`LIBBDPLUS_PATH`.
+- **0b. ✅** DVD menus via libdvdnav → libmpv `stream_cb`: synthetic fixture
+  and a commercial disc (*Airheads*) play end to end, with the disc's own
+  button graphics (`libdiscnav/spu.c`) and VM-driven track selection.
+- **0c. ✅ / ⚠️** SteamOS box: 4K HDR10 from a Flatpak under gamescope,
+  VAAPI decode and decoded multichannel PCM all work. **Bitstream
+  passthrough through PipeWire does not** (unresolved; see results).
+
+Decisions from Phase 0:
+- **Audio:** decoded PCM (up to 7.1) is the default. Passthrough is a later,
+  opt-in feature. An audio-output failure must fall back to PCM and never
+  freeze playback.
+- **Flatpak manifest** needs `org.freedesktop.Platform.VulkanLayer.gamescope`
+  (matching branch) and `--filesystem=xdg-run/gamescope-0` for HDR.
+- **libdiscnav rules:** no blocking libmpv calls on the render thread;
+  `BLOCK_FOR_TARGET_TIME=0`; segment model with flush on user jumps; NAV-pack
+  probe filler for stills; `video-latency-hacks`; tracks follow the VM.
 
 ### Phase 1 — App shell + menu-less disc playback
 Qt6/QML 10-foot UI, gamepad navigation, disc insert detection, main-feature

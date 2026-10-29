@@ -164,3 +164,66 @@ Open items (next steps for 0b / Phase 2):
   not reproduced since); instrument the render loop to find the stall.
 - Bare `[e] mpeg2video: Warning MVs not available` / "No video PTS" at some
   segment starts (segment begins on a non-I-frame or PTS-less packet).
+
+## 0c — SteamOS box: HDR, hwdec, audio (2026-10-28)
+
+Box: SteamOS 3.10, RX 7900 XT, gamescope 3.17, HDMI → LG TV (4K60, HDR
+on in Steam) → Pioneer VSX-1130 over ARC. Player: Flathub `io.mpv.Mpv`
+0.41 (Flatpak, runtime 26.08) launched as a non-Steam game via
+`spikes/0c-steambox/run.sh` (switchable test cases, logs per run).
+Clip: 60 s of the *Masters of the Universe* UHD (HEVC 10-bit HDR10 PQ +
+TrueHD 8ch), cut with `ffmpeg -playlist 1199 -ss 1200 -i bluray:/dev/sr0
+-c copy` (mpv `--stream-record` dropped almost all TrueHD packets).
+
+**Works:**
+- **HDR10 from a Flatpak under gamescope.** mpv `vo=gpu-next`,
+  `gpu-api=vulkan`, `target-colorspace-hint=yes` picks
+  `A2B10G10R10 + VK_COLOR_SPACE_HDR10_ST2084_EXT` at 3840x2160. gamescope
+  keeps the output in HDR the whole session, so the TV shows no badge
+  change when playback starts.
+- **VAAPI hardware decode** of 4K HEVC Main10 (`vaapi[p010]`), no drops.
+- **Decoded audio**: TrueHD → 7.1 PCM → PipeWire → TV (stereo downmix to
+  the receiver over ARC). Flawless per user.
+
+**Flatpak requirements found (our manifest must have these):**
+- Runtime extension `org.freedesktop.Platform.VulkanLayer.gamescope`
+  matching the runtime branch — without it gamescope can't do HDR for an
+  X11 Vulkan client.
+- `--filesystem=xdg-run/gamescope-0`: the WSI layer talks to gamescope on
+  that socket. Without it: "CreateSwapchainKHR: Creating swapchain for
+  non-Gamescope swapchain. Hooking has failed somewhere!"
+- Steam's default Game Resolution for non-Steam shortcuts was 1080p; set
+  per-shortcut to Native (the app should document/detect this).
+
+**Fails: bitstream passthrough (TrueHD) through PipeWire.**
+mpv `--audio-spdif=truehd --ao=pipewire` → stream goes `paused → error:
+no target node available`; mpv then stalls and the **picture freezes**.
+Ruled out, in order:
+1. Sink profile: was `hdmi-stereo`; switched to `hdmi-surround71-extra3`.
+2. Sink capability: node advertises IEC958 PCM/AC3/EAC3/TrueHD.
+3. Clock rates: `clock.allowed-rates` was `[48000]`; widened at runtime to
+   include 192000.
+4. Competing stream: SteamOS keeps `speech-dispatcher-dummy` linked to the
+   HDMI sink; moved it off. Still no target.
+Direct ALSA (`--ao=alsa`, `hdmi:CARD=HDMI,DEV=3`) fails with "Device or
+resource busy" — PipeWire holds the device; grabbing it would take audio
+away from Steam, so not a product option.
+
+Product implications:
+- **Audio-output failure must not freeze playback**: detect AO errors and
+  fall back to decoding (PCM).
+- Passthrough is not a given on SteamOS; ship decoded multichannel PCM as
+  the default, passthrough as an opt-in once it works.
+- In this home setup lossless passthrough is moot anyway: ARC to the
+  VSX-1130 carries at most DD/DD+ (receiver showed stereo PCM).
+
+Next for passthrough: try AC-3 (48 kHz, 2ch IEC958) to separate "any
+encoded stream" from "HBR TrueHD"; run WirePlumber with debug logging
+during a failing attempt; compare a host-side (non-Flatpak) client to
+rule out Flatpak/portal access rules on encoded nodes.
+
+Box state after testing (reverted 2026-10-28): `clock.allowed-rates` back
+to `[48000]`; `speech-dispatcher-dummy` back on the HDMI sink; HDMI card
+profile set to `hdmi-surround-extra3` (5.1, matching the user's speakers)
+as the default sink. The test harness stays in `~/discnav-test` on the box
+(launcher shortcut "run.sh" in Steam).
