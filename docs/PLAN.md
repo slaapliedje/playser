@@ -161,7 +161,15 @@ Status (2026-10-28), `app/`:
 - ✅ "Opening disc…" screen while mpv opens the title; B cancels (the UI
   returns at once; libbluray's open can't be interrupted and ends ~13 s
   later, so end-file events are matched to the current playlist entry).
-- ⬜ **Main feature via TheDiscDB** (https://thediscdb.com, data repo
+- ✅ **Main feature via TheDiscDB** (2026-10-29): `DiscMonitor` mounts
+  the disc read-only through udisks, hashes it on a worker thread
+  (`DiscIndex`) and looks it up in the embedded index
+  (`app/data/discdb-index.json.gz`, 5,557 discs, 950 KiB; rebuild with
+  `tools/build-discdb-index.py`). Known Blu-rays play their main playlist
+  (`bd://mpls/1199`) and show title/release/"4K UHD". Verified with both
+  discs. Still to do: DVD main title (records name VTS numbers, match by
+  duration), an Extras screen, the unknown-disc heuristic, and a
+  libudfread reader so discs needn't be mounted. Original notes: (https://thediscdb.com, data repo
   `TheDiscDb/data`, MIT; ~6,150 discs as of 2026-10-29). Each disc record
   has a `ContentHash` and labels playlists `MainMovie` / `Extra` /
   `Episode`. The hash needs no decryption: MD5 over the sizes of

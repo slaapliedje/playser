@@ -7,6 +7,9 @@ FocusScope {
     required property Mpv mpv
     property bool active: false
     property var drive: null
+    // the catalogue's title when the disc is known, else the volume label
+    readonly property string displayTitle: !drive ? ""
+        : drive.disc && drive.disc.title ? drive.disc.title : (drive.label || "")
     // from play() until mpv has opened the title; a UHD takes ~20 s
     property bool opening: false
     signal closed()
@@ -96,7 +99,8 @@ FocusScope {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Opening " + ({ "bluray": "Blu-ray", "dvd": "DVD" }[root.drive ? root.drive.kind : ""] || "disc")
+                text: "Opening " + (root.drive && root.drive.disc && root.drive.disc.format === "UHD" ? "4K UHD"
+                                    : { "bluray": "Blu-ray", "dvd": "DVD" }[root.drive ? root.drive.kind : ""] || "disc")
                       + ".".repeat(dots.count)
                 color: Theme.text
                 font.pixelSize: Theme.fontLarge
@@ -104,7 +108,7 @@ FocusScope {
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: root.drive ? (root.drive.label || "") : ""
+                text: root.displayTitle
                 color: Theme.textDim
                 font.pixelSize: Theme.fontMedium
             }
@@ -151,7 +155,7 @@ FocusScope {
 
             Text {
                 width: parent.width
-                text: root.mpv.mediaTitle || (root.drive ? root.drive.label : "")
+                text: root.displayTitle || root.mpv.mediaTitle
                 color: Theme.text
                 font.pixelSize: Theme.fontLarge
                 font.weight: Font.DemiBold

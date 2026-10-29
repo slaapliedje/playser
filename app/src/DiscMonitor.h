@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QDBusObjectPath>
+#include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QTimer>
 #include <QVariant>
 #include <QtQml/qqmlregistration.h>
@@ -11,7 +13,13 @@
 //
 // Each entry of `drives` is a map:
 //   path, model, device ("/dev/sr0"), hasMedia, kind ("dvd"|"bluray"|"cd"|
-//   "none"), label, url (mpv URL to play the disc), options (mpv options).
+//   "none"), label, url (mpv URL to play the disc), options (mpv options),
+//   identifying (still working out which disc it is), disc (DiscIndex entry,
+//   empty if unknown), contentHash.
+//
+// To identify a DVD or Blu-ray it is mounted read-only (as a desktop would)
+// and looked up in DiscIndex. A known Blu-ray's url then names its main
+// playlist, which matters on discs with hundreds of decoy playlists.
 class DiscMonitor : public QObject
 {
     Q_OBJECT
@@ -38,7 +46,19 @@ private slots:
                              const QStringList &invalidated);
 
 private:
+    struct Identity {
+        QString mountPoint;
+        bool pending = true;
+        QString contentHash;
+        QVariantMap disc;
+    };
+
     void scheduleRefresh();
+    void mount(const QString &blockPath);
+    void identify(const QString &blockPath, const QString &mountPoint);
+
+    QHash<QString, Identity> m_identities; // by block object path
+    QSet<QString> m_mountRequested;
 
     QVariantList m_drives;
     bool m_available = false;

@@ -8,6 +8,7 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Quick DBus)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
 pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
+find_package(ZLIB REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -25,6 +26,7 @@ qt_add_qml_module(discplayer
         src/OverlayEncoder.h src/OverlayEncoder.cpp
         src/ScreenSaverInhibitor.h src/ScreenSaverInhibitor.cpp
         src/DiscMonitor.h src/DiscMonitor.cpp
+        src/DiscIndex.h src/DiscIndex.cpp
         src/Gamepad.h src/Gamepad.cpp
     QML_FILES
         qml/Main.qml
@@ -36,8 +38,15 @@ qt_add_qml_module(discplayer
 
 target_include_directories(discplayer PRIVATE src)
 
+# offline disc catalogue from TheDiscDB (tools/build-discdb-index.py)
+qt_add_resources(discplayer discdb
+    PREFIX /
+    BASE data
+    FILES data/discdb-index.json.gz)
+
 target_link_libraries(discplayer PRIVATE
-    Qt6::Quick Qt6::DBus PkgConfig::MPV PkgConfig::SDL3)
+    Qt6::Quick Qt6::DBus PkgConfig::MPV PkgConfig::SDL3 ZLIB::ZLIB)
 
 include(GNUInstallDirs)
 install(TARGETS discplayer RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES data/THEDISCDB-LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/discplayer)

@@ -66,7 +66,9 @@ FocusScope {
         property bool focused: false
 
         readonly property bool playable: !!drive.url
-        readonly property string kindLabel: ({
+        readonly property var disc: drive.disc || ({})
+        readonly property bool known: !!disc.title
+        readonly property string kindLabel: disc.format === "UHD" ? "4K UHD" : ({
             "bluray": "Blu-ray", "dvd": "DVD", "cd": "CD", "none": "No disc", "unknown": "Disc"
         })[drive.kind] || drive.kind
 
@@ -99,10 +101,23 @@ FocusScope {
             }
             Text {
                 width: parent.width
-                text: drive.hasMedia ? (drive.label || "Untitled disc") : "Insert a disc"
+                text: !drive.hasMedia ? "Insert a disc"
+                      : known ? disc.title
+                      : (drive.label || "Untitled disc")
                 color: drive.hasMedia ? Theme.text : Theme.textDim
                 font.pixelSize: Theme.fontLarge
                 font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Text {
+                width: parent.width
+                visible: drive.hasMedia && (known || drive.identifying)
+                // the release name usually carries its year; add the film's if not
+                text: drive.identifying ? "Identifying…"
+                      : (disc.year && !String(disc.release).includes(disc.year) ? disc.year + "  ·  " : "")
+                        + (disc.release || "")
+                color: Theme.textDim
+                font.pixelSize: Theme.fontSmall
                 elide: Text.ElideRight
             }
             Text {
