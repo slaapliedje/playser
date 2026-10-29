@@ -7,11 +7,14 @@ FocusScope {
     required property Mpv mpv
     property bool active: false
     property var drive: null
+    // from play() until mpv has opened the title; a UHD takes ~20 s
+    property bool opening: false
     signal closed()
 
     function play(d) {
         drive = d
         active = true
+        opening = true
         forceActiveFocus()
         mpv.load(d.url, d.options || {})
         showOsd()
@@ -20,6 +23,7 @@ FocusScope {
     function close() {
         mpv.stop()
         active = false
+        opening = false
         picker.visible = false
         closed()
     }
@@ -38,6 +42,10 @@ FocusScope {
 
     Connections {
         target: root.mpv
+        function onFileLoaded() {
+            root.opening = false
+            root.showOsd()
+        }
         function onEndFile(reason) {
             if (root.active && (reason === "eof" || reason === "error"))
                 root.close()
@@ -76,12 +84,53 @@ FocusScope {
         event.accepted = true
     }
 
+    // ---- opening ----
+    Rectangle {
+        anchors.fill: parent
+        visible: root.opening
+        color: Theme.background
+
+        Column {
+            anchors.centerIn: parent
+            spacing: Theme.spacing
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Opening " + ({ "bluray": "Blu-ray", "dvd": "DVD" }[root.drive ? root.drive.kind : ""] || "disc")
+                      + ".".repeat(dots.count)
+                color: Theme.text
+                font.pixelSize: Theme.fontLarge
+                font.weight: Font.DemiBold
+            }
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: root.drive ? (root.drive.label || "") : ""
+                color: Theme.textDim
+                font.pixelSize: Theme.fontMedium
+            }
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Ⓑ Cancel"
+                color: Theme.textDim
+                font.pixelSize: Theme.fontSmall
+            }
+        }
+        Timer {
+            id: dots
+            property int count: 0
+            interval: 500
+            repeat: true
+            running: root.opening
+            onTriggered: count = (count + 1) % 4
+        }
+    }
+
     // ---- on-screen display ----
     Item {
         id: osd
         anchors.fill: parent
         opacity: 1
-        visible: opacity > 0 // hidden items stop re-rendering the UI layer
+        visible: opacity > 0 && !root.opening // hidden items stop re-rendering the UI layer
         Behavior on opacity { NumberAnimation { duration: 250 } }
 
         Rectangle {

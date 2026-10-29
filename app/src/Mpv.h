@@ -103,4 +103,5 @@ private:
     Transfer m_transfer = Transfer::Sdr;
     QHash<int, OverlaySlot> m_overlays;
     quint64 m_nextReply = 1000;
+    qint64 m_currentEntry = -1; // playlist entry of the latest START_FILE
 };

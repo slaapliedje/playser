@@ -320,8 +320,15 @@ void Mpv::processEvents()
         case MPV_EVENT_FILE_LOADED:
             emit fileLoaded();
             break;
+        case MPV_EVENT_START_FILE:
+            m_currentEntry = static_cast<mpv_event_start_file *>(ev->data)->playlist_entry_id;
+            break;
         case MPV_EVENT_END_FILE: {
             auto *ef = static_cast<mpv_event_end_file *>(ev->data);
+            // a cancelled disc open can finish long after the next one
+            // started (libbluray opens aren't interruptible): ignore it
+            if (ef->playlist_entry_id != m_currentEntry)
+                break;
             static const char *const reasons[] = { "eof", "", "stop", "quit", "error", "redirect" };
             const int r = int(ef->reason);
             emit endFile(QString::fromLatin1(r >= 0 && r <= 5 ? reasons[r] : "unknown"));

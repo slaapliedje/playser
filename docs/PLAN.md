@@ -158,8 +158,28 @@ Status (2026-10-28), `app/`:
 - ⬜ Real controller test (Steam Input on the box, Legion Go 2).
 - ⬜ "Opening disc…" state: a UHD takes ~22 s to open (spin-up + MakeMKV
   + 55 playlists) and currently shows black.
-- ⬜ UHD vs Blu-ray detection; own main-feature heuristic for obfuscated
-  discs; audio-output failure → PCM fallback.
+- ✅ "Opening disc…" screen while mpv opens the title; B cancels (the UI
+  returns at once; libbluray's open can't be interrupted and ends ~13 s
+  later, so end-file events are matched to the current playlist entry).
+- ⬜ **Main feature via TheDiscDB** (https://thediscdb.com, data repo
+  `TheDiscDb/data`, MIT; ~6,150 discs as of 2026-10-29). Each disc record
+  has a `ContentHash` and labels playlists `MainMovie` / `Extra` /
+  `Episode`. The hash needs no decryption: MD5 over the sizes of
+  `BDMV/STREAM/*.m2ts` (DVD: `VIDEO_TS/*.VOB|IFO|BUP`), sorted by bare
+  filename (ordinal), each as an 8-byte little-endian integer, uppercase
+  hex (reference: `TheDiscDb/optical-disc-manifest`
+  `tests/Get-ContentHash.ps1`). Verified: the *Masters of the Universe* UHD
+  hashes to `5A8BD9C8…5608`, whose record names `01199.mpls` (2:20:30) as
+  `MainMovie`, matching what we found by hand; *Airheads* isn't listed.
+  Plan: ship a compact offline index (hash → main playlist, extras with
+  names) built from the data repo and refreshed with releases, so no
+  network lookup and no privacy question; an optional online refresh
+  later. The extras list also gives a usable "Extras" menu where disc menus
+  aren't available yet (BD-J). Fallback when the disc is unknown: our own
+  heuristic (longest playlist whose clips aren't mostly shared with
+  others, chapter count, MakeMKV-style FPL detection), and offer to
+  contribute the disc.
+- ⬜ UHD vs Blu-ray detection; audio-output failure → PCM fallback.
 - ⬜ First-run MakeMKV setup and LibreDrive check.
 - 🔶 Flatpak manifest `flatpak/io.github.slaapliedje.DiscPlayer.yml`
   (KDE 6.11, media modules from `io.mpv.Mpv`). App ID is provisional.
