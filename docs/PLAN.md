@@ -78,6 +78,20 @@ all UHD discs).
   flashes firmware. Point users to MakeMKV's docs/forum; crossflashing
   (e.g. BU50N → BU40N firmware) is the user's own risk.
 - libdvdcss on Flathub: unresolved; check VLC's Flathub manifest for precedent.
+- Lessons from the user's Legion Go 2 setup (`~/dev/legiongo2`):
+  - Keep everything in `$HOME` or Flatpak; that's what survives SteamOS
+    updates.
+  - Steam library art: find a non-Steam shortcut's appid in `shortcuts.vdf`
+    (regex `\x02appid\x00(.{4})`, little-endian u32), then write
+    `<appid>p.png` 600x900, `<appid>.png` 920x430, `<appid>_hero.png`
+    1920x620 and `<appid>_logo.png` to `userdata/<user>/config/grid/`.
+    Steam needs a restart to show them.
+  - Steam launches apps with `no_new_privs`, so a Flatpak started from
+    inside a FUSE AppImage fails silently (`bwrap: Unexpected
+    capabilities`). Don't ship as an AppImage.
+  - Steam Input exposes virtual pads under varying names ("SteamOS Handheld
+    Controller" on the Go 2), and SDL2 and SDL3 button names differ. Map by
+    SDL3 gamepad button, never by controller name.
 - BD-J needs an OpenJDK runtime in the Flatpak (SDK extension).
 - Audio passthrough (TrueHD/Atmos, DTS-HD) via PipeWire is a known risk;
   may need mpv `audio-spdif` with direct ALSA output.
@@ -118,6 +132,26 @@ Qt6/QML 10-foot UI, gamepad navigation, disc insert detection, main-feature
 playback, track/chapter selection, player OSD, first-run MakeMKV setup and
 LibreDrive check.
 
+Status (2026-10-28), `app/`:
+- ✅ `MpvItem` (libmpv OpenGL render API in Qt Quick; async-only),
+  `DiscMonitor` (udisks2), `Gamepad` (SDL3 → key events), home screen,
+  player OSD (seek, chapters, progress), audio/subtitle picker. Verified by
+  scripted screenshots (`--script`) with the UHD and *Airheads* discs.
+- ⬜ **HDR in the app.** The libmpv render API is OpenGL-only, and Qt Quick
+  composites it into an SDR scene, so the app currently tone-maps to SDR
+  even though spike 0c proved HDR10 works when mpv owns a Vulkan swapchain.
+  Needs a spike: mpv in its own window (`--wid` embed or a separate
+  gamescope window) with the QML UI layered on top, or Qt's HDR swapchain
+  support plus a Vulkan render path.
+- ⬜ Real controller test (Steam Input on the box, Legion Go 2).
+- ⬜ "Opening disc…" state: a UHD takes ~22 s to open (spin-up + MakeMKV
+  + 55 playlists) and currently shows black.
+- ⬜ UHD vs Blu-ray detection; own main-feature heuristic for obfuscated
+  discs; audio-output failure → PCM fallback.
+- ⬜ First-run MakeMKV setup and LibreDrive check.
+- ⬜ Flatpak manifest (KDE runtime, gamescope layer, `xdg-run/gamescope-0`,
+  `--system-talk-name=org.freedesktop.UDisks2`, `--device=all`).
+
 ### Phase 2 — libdiscnav: DVD menus
 Own repo/library from day one; integrate into the app.
 
@@ -128,6 +162,34 @@ Own repo/library from day one; integrate into the app.
 ### Phase 5 — Distribution
 Flatpak on GitHub releases, Steam artwork + Steam Input template, then
 Flathub submission.
+
+Steam, as a possible second channel (decide later; keep the door open now):
+- AI policy: since Valve's 2026-01-16 update, code assistants and other dev
+  tools need no disclosure; only player-facing generated content (art,
+  audio, text, store/marketing assets) does. Keep store art and icons
+  human-made, or disclose. Re-check Valve's Steamworks docs before
+  submitting.
+- Free, open-source non-game software is accepted (OBS, Blender, Krita);
+  there is a per-app Steam Direct fee.
+- **Biggest risk is disc decryption, not AI.** A Steam build likely must ship
+  without libdvdcss and rely only on a user-installed MakeMKV. Ask Valve
+  before investing.
+- Licensing: the app will be GPL (libmpv as packaged is GPL). The Steamworks
+  SDK is proprietary, so keep Steam API use in an optional, separately
+  loaded module (or a GPL linking exception) and never require it.
+- On Steam, the native Steam Input API (action sets, per-device glyphs)
+  becomes available; SDL3 stays as the fallback everywhere else.
+
+Input (applies now, whatever the channel):
+- Steam Input already sits in front of SDL3 when launched from Steam: it
+  presents a virtual pad and tells SDL to ignore the physical device. Keep
+  SDL3 as the base and route everything through an input interface, so a
+  Steam Input API backend can be added later.
+- Ship a recommended Steam Input layout for the non-Steam shortcut
+  (Phase 5, alongside the library art), so users remap the usual Steam way
+  and extra buttons (back paddles, Go 2 buttons) can be bound without code.
+- On-screen button hints use SDL3's gamepad type (Xbox, PlayStation,
+  Nintendo, Steam Deck) to pick the right glyphs instead of fixed letters.
 
 ### Phase 6 — Plex, then Jellyfin
 
