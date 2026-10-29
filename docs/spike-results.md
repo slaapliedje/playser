@@ -227,3 +227,38 @@ to `[48000]`; `speech-dispatcher-dummy` back on the HDMI sink; HDMI card
 profile set to `hdmi-surround-extra3` (5.1, matching the user's speakers)
 as the default sink. The test harness stays in `~/discnav-test` on the box
 (launcher shortcut "run.sh" in Steam).
+
+## 0d — SDR UI over HDR video via `overlay-add` (2026-10-29, SteamOS box)
+
+Question: if mpv owns an HDR10 Vulkan swapchain, can the app's UI (QML
+rendered off-screen) be composited by mpv with `overlay-add`, at the right
+brightness? Test: a 3840x400 premultiplied BGRA bar (`spikes/0d-hdr-overlay/`)
+over the UHD clip, case `hdr-overlay` / `hdr-overlay-pq` in `run.sh`.
+Measured from `gamescopectl screenshot /tmp/x.avif` (10-bit BT.2020 PQ
+capture of the real output; a `.png` screenshot is gamescope's SDR
+conversion and hides the problem).
+
+**Plain sRGB bitmap: wrong.** White 990 nits (≈5x Steam's UI), grey 119 →
+66 nits, amber shifted. Cause (`video/out/vo_gpu_next.c`, `SUBBITMAP_BGRA`):
+mpv assumes BGRA overlays are in the **video's** colorspace ("Infer bitmap
+colorspace from source"), sensible for PQ-authored PGS subtitles, so sRGB
+codes were read as PQ codes and blending happens on PQ values.
+
+**Pre-encoded bitmap: right.** `make-bgra.py --pq` converts sRGB → linear →
+BT.2020 → PQ with SDR white at 203 nits (BT.2408), premultiplied on the
+encoded values. Measured: white 202 nits, grey 37 nits (expected 37.4),
+amber hue intact. Edges clean, placement correct.
+
+Remaining caveat: alpha blends in PQ space, so partial transparency over
+dark content comes out darker than in sRGB (25% white over black: ~1 nit
+instead of ~10). Fine for scrims and antialiased text; design the OSD with
+mostly opaque elements and don't rely on faint translucent fills.
+
+Product implications:
+- The app must encode overlays in the video's colorspace: sRGB for SDR
+  video, BT.2020 PQ for HDR10/DV (HLG would need its own transfer).
+  Re-encode when `video-params` change (menu → feature on a disc).
+- SDR white level should follow the system's SDR-in-HDR brightness
+  (gamescope setting) rather than a fixed 203, if it can be queried.
+- The same path carries `libdiscnav` menu graphics (DVD SPU, BD IG/BD-J
+  ARGB), which are SDR BT.709 and need the same conversion over HDR.

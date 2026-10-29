@@ -17,6 +17,12 @@ hdr-pcm)        # HDR10 out, TrueHD decoded to PCM by mpv
     opts+=(--target-colorspace-hint=yes --ao=pipewire) ;;
 sdr-tonemap)    # control: no HDR hint, mpv tone-maps to SDR
     opts+=(--target-colorspace-hint=no --ao=pipewire) ;;
+hdr-overlay)    # spike 0d: SDR UI bitmap composited by mpv over HDR video
+    opts+=(--target-colorspace-hint=yes --ao=pipewire --script="$dir/overlay.lua"
+           --script-opts=overlay-file="$dir/overlay.bgra") ;;
+hdr-overlay-pq) # same, bitmap pre-encoded as BT.2020 PQ (mpv blends in the video's space)
+    opts+=(--target-colorspace-hint=yes --ao=pipewire --script="$dir/overlay.lua"
+           --script-opts=overlay-file="$dir/overlay-pq.bgra") ;;
 pass-pipewire)  # bitstream TrueHD/E-AC-3/AC-3 through PipeWire
     opts+=(--target-colorspace-hint=yes --ao=pipewire --audio-spdif=ac3,eac3,truehd) ;;
 pass-alsa)      # bitstream straight to the HDMI ALSA device, bypassing PipeWire
