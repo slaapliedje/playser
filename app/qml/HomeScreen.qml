@@ -6,6 +6,14 @@ FocusScope {
 
     required property DiscMonitor monitor
     signal playRequested(var drive)
+    signal setupRequested()
+
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Menu) {
+            root.setupRequested()
+            event.accepted = true
+        }
+    }
 
     readonly property var drives: monitor.drives
 
@@ -56,7 +64,7 @@ FocusScope {
     Text {
         id: hints
         anchors { left: parent.left; bottom: parent.bottom; margins: Theme.margin }
-        text: "Ⓐ Play    ◀ ▶ Choose drive"
+        text: "Ⓐ Play    ◀ ▶ Choose drive    ☰ Setup"
         color: Theme.textDim
         font.pixelSize: Theme.fontSmall
     }

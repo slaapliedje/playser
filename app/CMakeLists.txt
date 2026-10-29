@@ -27,6 +27,7 @@ qt_add_qml_module(discplayer
         src/ScreenSaverInhibitor.h src/ScreenSaverInhibitor.cpp
         src/DiscMonitor.h src/DiscMonitor.cpp
         src/DiscIndex.h src/DiscIndex.cpp
+        src/SystemCheck.h src/SystemCheck.cpp
         src/Gamepad.h src/Gamepad.cpp
     QML_FILES
         qml/Main.qml
@@ -36,6 +37,7 @@ qt_add_qml_module(discplayer
         qml/Theme.qml
         qml/Resume.qml
         qml/DiscScreen.qml
+        qml/SetupScreen.qml
 )
 
 target_include_directories(discplayer PRIVATE src)

@@ -80,8 +80,12 @@ void UiRenderer::updateSize()
     const QSize osd = m_mpv->osdSize();
     const int width = osd.isEmpty() ? kHeight * 16 / 9 : int(qRound(double(kHeight) * osd.width() / osd.height()));
     const QSize size(width, kHeight);
-    if (size == m_image.size())
+    // the display size mpv scales to changed: resend even if ours didn't
+    m_sent = QImage();
+    if (size == m_image.size()) {
+        scheduleRender();
         return;
+    }
     m_image = QImage(size, QImage::Format_ARGB32_Premultiplied);
     m_image.fill(Qt::transparent);
     m_window->setGeometry(0, 0, size.width(), size.height());

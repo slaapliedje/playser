@@ -1,4 +1,5 @@
 import QtQuick
+import QtCore
 import DiscPlayer
 
 // Root of the UI. It is rendered off-screen and composited by mpv over the
@@ -17,6 +18,21 @@ FocusScope {
     Binding { target: Theme; property: "scale"; value: Math.min(root.width / 1920, root.height / 1080) }
 
     DiscMonitor { id: discs }
+    SystemCheck { id: system }
+    Settings {
+        id: settings
+        property bool setupSeen: false
+    }
+
+    function showSetup() {
+        setup.open()
+    }
+
+    Component.onCompleted: {
+        // first run, or something Blu-ray playback needs went missing
+        if (!settings.setupSeen || (system.opticalDrives > 0 && !system.ready))
+            showSetup()
+    }
 
     // Steam's Game Mode screensaver would otherwise cover the film
     ScreenSaverInhibitor { inhibited: player.active && !root.mpv.paused }
@@ -33,7 +49,16 @@ FocusScope {
         visible: !player.active
         monitor: discs
         focus: !player.active
+        onSetupRequested: root.showSetup()
         onPlayRequested: drive => {
+            // a Blu-ray can't play without MakeMKV: say why instead of failing
+            if (drive.kind === "bluray") {
+                system.refresh()
+                if (!system.ready) {
+                    root.showSetup()
+                    return
+                }
+            }
             const episodes = drive.disc && drive.disc.episodes ? drive.disc.episodes : []
             if (episodes.length > 1 || Resume.get(drive.contentHash || drive.label))
                 discScreen.open(drive)
@@ -54,6 +79,16 @@ FocusScope {
                 : null, index, start)
         }
         onClosed: home.forceActiveFocus()
+    }
+
+    SetupScreen {
+        id: setup
+        anchors.fill: parent
+        check: system
+        onDone: {
+            settings.setupSeen = true
+            home.forceActiveFocus()
+        }
     }
 
     PlayerScreen {

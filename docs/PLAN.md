@@ -223,7 +223,15 @@ Status (2026-10-28), `app/`:
   7.7 s with only the bundled MakeMKV and the user's key in ~/.MakeMKV.
   (A run of MEDIUM ERROR / NO SEEK COMPLETE on the Optiarc's inner tracks
   was cured by unplugging and replugging it after loading `sg`.)
-- ⬜ First-run MakeMKV setup (key entry, `sg` check) and LibreDrive check. Learned on the box
+- ✅ **Setup screen** (2026-10-29, `SetupScreen` + `SystemCheck`): on first
+  run, when Blu-ray isn't ready, or via Menu. Checks which MakeMKV is in
+  use (installed Flatpak / bundled / system), whether a key is registered
+  (never read beyond that), and whether optical drives are reachable via
+  /dev/sg*; explains each fix for Desktop Mode (Discover install, Help →
+  Register in MakeMKV, the `sg` commands). Choosing a Blu-ray while not
+  ready opens it instead of failing. Verified on the box (all ready, 4K)
+  and on the desktop with the key missing.
+- ⬜ LibreDrive check (for UHD) on the setup screen. Learned on the box
   (2026-10-29, MakeMKV 2.0.0 copied in for testing):
   - libbluray appends `.so.0` itself: `LIBAACS_PATH=<dir>/libmmbd`.
   - libmmbd runs `makemkvcon` (found via `MAKEMKVCON`), which needs
