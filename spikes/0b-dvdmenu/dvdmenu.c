@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <time.h>
 
 #include <SDL3/SDL.h>
@@ -38,8 +39,11 @@
 #include <mpv/render_gl.h>
 #include <mpv/stream_cb.h>
 
+#include "spu.h"
+
 #define BLOCK 2048
 #define STILL_PAD_LIMIT (512 * 1024)
+#define STILL_PAD_PROBE_CAP (8 * 1024 * 1024)
 #define MAX_BUTTONS 36
 
 /* ---------- logging ---------- */
@@ -74,9 +78,18 @@ static struct {
     unsigned gen;           /* bumped on every user nav action */
     bool stopped;           /* DVDNAV_STOP reached */
     bool user_jump;         /* user action may cause a jump: flush mpv on the hop */
+    bool opened;            /* mpv finished opening (probing) the current segment */
     bool have_ptm;
     uint32_t last_e_ptm;    /* end PTM of the previous VOBU, for discontinuity checks */
     uint8_t last_pack[14];  /* most recent pack header, reused for injected blocks */
+    uint8_t last_nav[BLOCK];/* most recent NAV pack (PCI+DSI) */
+    bool have_nav;
+    bool nav_pending;       /* last_nav belongs at the start of the next segment */
+    int want_aid_src;       /* MPEG-PS stream id the VM selected for audio, -1 none */
+    int want_sid_src;       /* ... and for subpictures */
+    bool sub_forced_only;   /* subtitles "off": still show forced SPUs (menus) */
+    bool in_menu;           /* VM is in a menu domain: we draw the SPU, not mpv */
+    spu_assembler_t spu_asm;
 } N = { .lock = PTHREAD_MUTEX_INITIALIZER, .wake = PTHREAD_COND_INITIALIZER };
 
 static struct {
@@ -84,9 +97,14 @@ static struct {
     int n;
     rect_t btn[MAX_BUTTONS];
     int cur;                /* 1-based, 0 = none */
+    /* menu subpicture, composited by the render thread when dirty */
+    spu_image_t spu;
+    spu_highlight_t hl;
+    uint32_t rgb_clut[16];
+    bool dirty;
 } O = { .lock = PTHREAD_MUTEX_INITIALIZER };
 
-static Uint32 ev_redraw, ev_mpv, ev_shot, ev_flush;
+static Uint32 ev_redraw, ev_mpv, ev_shot, ev_flush, ev_tracks;
 
 /* Called with N.lock held. Snapshot the button layout for the renderer. */
 static void update_overlay(void)
@@ -106,11 +124,75 @@ static void update_overlay(void)
     }
     bool changed = O.cur != cur;
     O.cur = cur;
+    spu_highlight_t hl = { 0 };
+    dvdnav_highlight_area_t area;
+    if (O.n && cur > 0 && dvdnav_get_highlight_area(pci, cur, 0, &area) == DVDNAV_STATUS_OK)
+        hl = (spu_highlight_t){ true, area.sx, area.sy, area.ex, area.ey, area.palette };
+    if (memcmp(&hl, &O.hl, sizeof(hl))) {
+        O.hl = hl;
+        O.dirty = true;
+    }
     pthread_mutex_unlock(&O.lock);
 
     if (changed)
         logf_("highlight -> button %d", cur);
     SDL_Event e = { .type = ev_redraw };
+    SDL_PushEvent(&e);
+}
+
+/* ---------- menu subpictures ---------- */
+
+static void clear_spu(void)
+{
+    pthread_mutex_lock(&O.lock);
+    spu_image_free(&O.spu);
+    O.dirty = true;
+    pthread_mutex_unlock(&O.lock);
+    spu_asm_reset(&N.spu_asm);
+}
+
+/* Called with N.lock held: pull the active subpicture stream out of a
+ * block and decode complete units. */
+static void scan_spu(const uint8_t *b)
+{
+    if (N.want_sid_src < 0)
+        return;
+    int i = 14 + (b[13] & 7);
+    while (i + 9 <= BLOCK && !b[i] && !b[i + 1] && b[i + 2] == 1) {
+        int end = i + 6 + ((b[i + 4] << 8) | b[i + 5]);
+        if (end > BLOCK)
+            break;
+        if (b[i + 3] == 0xbd) {             /* private stream 1 */
+            int p = i + 9 + b[i + 8];       /* skip MPEG-2 PES header */
+            if (p < end && b[p] == N.want_sid_src &&
+                spu_asm_feed(&N.spu_asm, b + p + 1, end - p - 1)) {
+                spu_image_t img;
+                if (spu_decode(N.spu_asm.buf, N.spu_asm.size, &img)) {
+                    pthread_mutex_lock(&O.lock);
+                    spu_image_free(&O.spu);
+                    O.spu = img;
+                    O.dirty = true;
+                    pthread_mutex_unlock(&O.lock);
+                    logf_("menu spu %dx%d at %d,%d", img.w, img.h, img.x, img.y);
+                    SDL_Event e = { .type = ev_redraw };
+                    SDL_PushEvent(&e);
+                }
+            }
+        }
+        i = end;
+    }
+}
+
+/* Called with N.lock held after anything that may change the domain. */
+static void update_domain(void)
+{
+    bool menu = !dvdnav_is_domain_vts(N.dvd);
+    if (menu == N.in_menu)
+        return;
+    N.in_menu = menu;
+    if (!menu)
+        clear_spu();
+    SDL_Event e = { .type = ev_tracks };
     SDL_PushEvent(&e);
 }
 
@@ -173,6 +255,12 @@ static int next_block(stream_t *s)
     for (;;) {
         if (s->cancel) { ret = -1; break; }
         if (s->eof) { ret = 0; break; }
+        if (N.nav_pending) {
+            N.nav_pending = false;
+            memcpy(s->blk, N.last_nav, BLOCK);
+            ret = 1;
+            break;
+        }
 
         if (s->in_still) {
             if (s->still_len != 0xff &&
@@ -181,6 +269,18 @@ static int next_block(stream_t *s)
                 dvdnav_still_skip(N.dvd);
                 s->in_still = false;
                 continue;
+            }
+            /* MPEG-PS has no header, so lavf's find_stream_info only stops
+             * once the *packets* it has read reach probesize (or EOF).
+             * Padding isn't a packet; a one-picture still never gets there
+             * and the picture is held back until the still ends. Before mpv
+             * has opened the segment, repeat the last NAV pack instead: it
+             * is a real (dvd_nav data) packet and counts. */
+            if (!N.opened && N.have_nav && s->still_pad < STILL_PAD_PROBE_CAP) {
+                memcpy(s->blk, N.last_nav, BLOCK);
+                s->still_pad += BLOCK;
+                ret = 1;
+                break;
             }
             if (s->still_pad < STILL_PAD_LIMIT) {
                 make_padding_block(s->blk);
@@ -213,6 +313,8 @@ static int next_block(stream_t *s)
         case DVDNAV_BLOCK_OK:
             memcpy(N.last_pack, s->blk, 14);
             s->got_data = true;
+            if (N.in_menu)
+                scan_spu(s->blk);
             ret = 1;
             goto out;
         case DVDNAV_NOP:
@@ -239,6 +341,10 @@ static int next_block(stream_t *s)
             logf_("%s%s%s", ev == DVDNAV_HOP_CHANNEL ? "hop channel" : "vts change",
                   s->got_data ? " -> end segment" : " (segment start, ignored)",
                   s->got_data && N.user_jump ? ", flush" : "");
+            /* a jump leaves the old menu's graphics behind (a looping
+             * menu's restart is not a hop, so it keeps them) */
+            clear_spu();
+            update_domain();
             if (s->got_data) {
                 /* user-initiated: drop mpv's buffered old content right away
                  * instead of letting it play out */
@@ -257,6 +363,7 @@ static int next_block(stream_t *s)
             dvdnav_cell_change_event_t *e = (dvdnav_cell_change_event_t *)s->blk;
             logf_("cell change: cell %d pg %d (%s)", e->cellN, e->pgN,
                   dvdnav_is_domain_vts(N.dvd) ? "title" : "menu");
+            update_domain();
             continue;
         }
         case DVDNAV_NAV_PACKET: {
@@ -269,24 +376,74 @@ static int next_block(stream_t *s)
             bool discont = N.have_ptm && s_ptm != N.last_e_ptm;
             N.have_ptm = true;
             N.last_e_ptm = e_ptm;
+            memcpy(N.last_nav, s->blk, BLOCK);
+            N.have_nav = true;
             update_overlay();
             if (discont && s->got_data) {
                 logf_("pts discontinuity -> end segment");
+                N.nav_pending = true; /* opens the next segment */
                 s->eof = true;
                 ret = 0;
                 goto out;
             }
-            continue;
+            /* pass NAV packs through: lavf makes a harmless dvd_nav data
+             * stream of them, and still frames reuse them as probe filler */
+            memcpy(N.last_pack, s->blk, 14);
+            ret = 1;
+            goto out;
         }
         case DVDNAV_HIGHLIGHT:
             update_overlay();
             continue;
-        case DVDNAV_SPU_CLUT_CHANGE:
-            logf_("spu clut change");
+        case DVDNAV_SPU_CLUT_CHANGE: {
+            const uint32_t *clut = (const uint32_t *)s->blk;
+            pthread_mutex_lock(&O.lock);
+            for (int i = 0; i < 16; i++)
+                O.rgb_clut[i] = spu_clut_to_rgb(clut[i]);
+            O.dirty = true;
+            pthread_mutex_unlock(&O.lock);
             continue;
-        case DVDNAV_SPU_STREAM_CHANGE:
-        case DVDNAV_AUDIO_STREAM_CHANGE:
+        }
+        /* Track selection follows the VM (disc programming, language menus).
+         * Map physical stream numbers to the PS stream ids lavf uses as
+         * mpv's track src-id. Streams show up in mpv late (PS has no header),
+         * so the main thread applies this whenever the track list changes. */
+        case DVDNAV_AUDIO_STREAM_CHANGE: {
+            dvdnav_audio_stream_change_event_t *e = (void *)s->blk;
+            int src = -1;
+            if (e->physical >= 0) {
+                switch (dvdnav_audio_stream_format(N.dvd, e->logical)) {
+                case DVD_AUDIO_FORMAT_AC3:       src = 0x80 + e->physical; break;
+                case DVD_AUDIO_FORMAT_DTS:       src = 0x88 + e->physical; break;
+                case DVD_AUDIO_FORMAT_LPCM:      src = 0xa0 + e->physical; break;
+                case DVD_AUDIO_FORMAT_MPEG:
+                case DVD_AUDIO_FORMAT_MPEG2_EXT: src = 0x1c0 + e->physical; break;
+                }
+            }
+            if (src != N.want_aid_src) {
+                logf_("audio stream -> physical %d (src-id 0x%x)", e->physical, src);
+                N.want_aid_src = src;
+                SDL_Event te = { .type = ev_tracks };
+                SDL_PushEvent(&te);
+            }
             continue;
+        }
+        case DVDNAV_SPU_STREAM_CHANGE: {
+            dvdnav_spu_stream_change_event_t *e = (void *)s->blk;
+            /* bit 7 set = subtitles not displayed; only forced SPUs show */
+            int phys = e->physical_wide;
+            int src = phys >= 0 ? 0x20 + (phys & 0x1f) : -1;
+            bool forced = phys < 0 || (phys & 0x80);
+            if (src != N.want_sid_src || forced != N.sub_forced_only) {
+                logf_("spu stream -> physical 0x%x (src-id 0x%x)%s", phys, src,
+                      forced ? " forced-only" : "");
+                N.want_sid_src = src;
+                N.sub_forced_only = forced;
+                SDL_Event te = { .type = ev_tracks };
+                SDL_PushEvent(&te);
+            }
+            continue;
+        }
         case DVDNAV_STOP:
             logf_("stop");
             N.stopped = true;
@@ -303,6 +460,9 @@ out:
     return ret;
 }
 
+/* DISCNAV_DUMP=path: append every block handed to mpv, for offline ffprobe */
+static FILE *dump_file;
+
 static int64_t read_fn(void *cookie, char *buf, uint64_t nbytes)
 {
     stream_t *s = cookie;
@@ -312,6 +472,8 @@ static int64_t read_fn(void *cookie, char *buf, uint64_t nbytes)
             return r;
         s->blk_pos = 0;
         s->blk_len = BLOCK;
+        if (dump_file)
+            fwrite(s->blk, 1, BLOCK, dump_file);
     }
     uint64_t n = s->blk_len - s->blk_pos;
     if (n > nbytes)
@@ -341,6 +503,9 @@ static int open_fn(void *user, char *uri, mpv_stream_cb_info *info)
     stream_t *s = calloc(1, sizeof(*s));
     if (!s)
         return MPV_ERROR_LOADING_FAILED;
+    pthread_mutex_lock(&N.lock);
+    N.opened = false;
+    pthread_mutex_unlock(&N.lock);
     info->cookie = s;
     info->read_fn = read_fn;
     info->close_fn = close_fn;
@@ -435,8 +600,49 @@ static void draw_rect(float x0, float y0, float x1, float y1, bool fill)
     glEnd();
 }
 
+static bool show_debug_rects;
+
+/* Re-composite the menu SPU into a frame-sized texture if it changed. */
+static bool update_spu_texture(GLuint *tex, int fw, int fh)
+{
+    static uint8_t *rgba;
+    static int cur_w, cur_h;
+    static bool have_image;
+
+    pthread_mutex_lock(&O.lock);
+    if (O.dirty || fw != cur_w || fh != cur_h) {
+        O.dirty = false;
+        if (fw != cur_w || fh != cur_h) {
+            free(rgba);
+            rgba = malloc((size_t)fw * fh * 4);
+            cur_w = fw;
+            cur_h = fh;
+        }
+        have_image = rgba && O.spu.pix;
+        if (have_image) {
+            spu_composite(&O.spu, O.rgb_clut, &O.hl, rgba, fw, fh);
+            if (!*tex) {
+                glGenTextures(1, tex);
+                glBindTexture(GL_TEXTURE_2D, *tex);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            }
+            glBindTexture(GL_TEXTURE_2D, *tex);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, fw, fh, 0, GL_RGBA,
+                         GL_UNSIGNED_BYTE, rgba);
+        }
+    }
+    pthread_mutex_unlock(&O.lock);
+    return have_image;
+}
+
 static void draw_overlay(vmap_t m, int w, int h)
 {
+    static GLuint spu_tex;
     if (!m.ok)
         return;
     /* mpv leaves its own GL state behind; reset what fixed-function needs */
@@ -456,8 +662,25 @@ static void draw_overlay(vmap_t m, int w, int h)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glLineWidth(2);
 
+    int fw = (int)props[P_VW], fh = (int)props[P_VH];
+    glActiveTexture(GL_TEXTURE0);
+    if (update_spu_texture(&spu_tex, fw, fh)) {
+        float x1 = m.x + fw * m.sx, y1 = m.y + fh * m.sy;
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, spu_tex);
+        glColor4f(1, 1, 1, 1);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0, 0); glVertex2f(m.x, m.y);
+        glTexCoord2f(1, 0); glVertex2f(x1, m.y);
+        glTexCoord2f(1, 1); glVertex2f(x1, y1);
+        glTexCoord2f(0, 1); glVertex2f(m.x, y1);
+        glEnd();
+        glDisable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
     pthread_mutex_lock(&O.lock);
-    for (int i = 0; i < O.n; i++) {
+    for (int i = 0; show_debug_rects && i < O.n; i++) {
         rect_t r = O.btn[i];
         float x0 = m.x + r.sx * m.sx, y0 = m.y + r.sy * m.sy;
         float x1 = m.x + r.ex * m.sx, y1 = m.y + r.ey * m.sy;
@@ -516,16 +739,90 @@ static void on_mpv_render_update(void *ctx)
     SDL_PushEvent(&e);
 }
 
-static void load_segment(mpv_handle *mpv, bool no_menu_audio)
+static void load_segment(mpv_handle *mpv)
 {
-    if (no_menu_audio) {
-        pthread_mutex_lock(&N.lock);
-        bool menu = !dvdnav_is_domain_vts(N.dvd);
-        pthread_mutex_unlock(&N.lock);
-        mpv_set_property_string(mpv, "aid", menu ? "no" : "auto");
-    }
     const char *cmd[] = { "loadfile", "discnav://", NULL };
     mpv_command_async(mpv, 0, cmd);
+}
+
+/* mpv's current track list, cached from the observed "track-list" node. */
+#define MAX_TRACKS 64
+#define TRACK_LIST_ID 100
+static struct { int64_t id, src; char type[8]; } tracks[MAX_TRACKS];
+static int ntracks;
+static int64_t cur_aid = -2, cur_sid = -2; /* last values we requested */
+
+static void cache_tracks(mpv_node *list)
+{
+    ntracks = 0;
+    if (list->format != MPV_FORMAT_NODE_ARRAY)
+        return;
+    for (int i = 0; i < list->u.list->num && ntracks < MAX_TRACKS; i++) {
+        mpv_node *t = &list->u.list->values[i];
+        if (t->format != MPV_FORMAT_NODE_MAP)
+            continue;
+        int64_t id = -1, src = -1;
+        const char *type = "";
+        for (int k = 0; k < t->u.list->num; k++) {
+            const char *key = t->u.list->keys[k];
+            mpv_node *v = &t->u.list->values[k];
+            if (!strcmp(key, "id") && v->format == MPV_FORMAT_INT64)
+                id = v->u.int64;
+            else if (!strcmp(key, "src-id") && v->format == MPV_FORMAT_INT64)
+                src = v->u.int64;
+            else if (!strcmp(key, "type") && v->format == MPV_FORMAT_STRING)
+                type = v->u.string;
+        }
+        tracks[ntracks].id = id;
+        tracks[ntracks].src = src;
+        snprintf(tracks[ntracks].type, sizeof(tracks[0].type), "%s", type);
+        ntracks++;
+    }
+}
+
+static int64_t find_track(const char *type, int src)
+{
+    for (int i = 0; i < ntracks; i++)
+        if (tracks[i].src == src && !strcmp(tracks[i].type, type))
+            return tracks[i].id;
+    return -1;
+}
+
+/* Select the tracks the DVD VM wants, if mpv knows about them yet. Uses
+ * async property sets: this runs on the render thread. */
+static void apply_tracks(mpv_handle *mpv)
+{
+    pthread_mutex_lock(&N.lock);
+    int want_a = N.want_aid_src, want_s = N.want_sid_src;
+    bool forced = N.sub_forced_only;
+    pthread_mutex_unlock(&N.lock);
+
+    pthread_mutex_lock(&N.lock);
+    bool in_menu = N.in_menu;
+    pthread_mutex_unlock(&N.lock);
+    /* in menus we composite the SPU ourselves (CLUT + highlights), so mpv
+     * must not draw it too */
+    if (in_menu)
+        want_s = -1;
+    if (in_menu && cur_sid != -1) {
+        const char *no = "no";
+        mpv_set_property_async(mpv, 0, "sid", MPV_FORMAT_STRING, &no);
+        cur_sid = -1;
+    }
+
+    int64_t aid = find_track("audio", want_a), sid = find_track("sub", want_s);
+    if (aid >= 0 && aid != cur_aid) {
+        logf_("select aid %" PRId64 " (src-id 0x%x)", aid, want_a);
+        mpv_set_property_async(mpv, 0, "aid", MPV_FORMAT_INT64, &aid);
+        cur_aid = aid;
+    }
+    if (sid >= 0 && sid != cur_sid) {
+        logf_("select sid %" PRId64 " (src-id 0x%x)", sid, want_s);
+        mpv_set_property_async(mpv, 0, "sid", MPV_FORMAT_INT64, &sid);
+        cur_sid = sid;
+    }
+    int f = forced;
+    mpv_set_property_async(mpv, 0, "sub-forced-events-only", MPV_FORMAT_FLAG, &f);
 }
 
 static void die(const char *msg)
@@ -574,25 +871,25 @@ static void *script_thread(void *arg)
 int main(int argc, char **argv)
 {
     const char *dev = "/dev/sr0";
-    bool no_menu_audio = false;
     const char *script = NULL, *mpv_log = NULL, *shot_dir = ".";
     for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "--no-menu-audio"))
-            no_menu_audio = true;
-        else if (!strcmp(argv[i], "--script") && i + 1 < argc)
+        if (!strcmp(argv[i], "--script") && i + 1 < argc)
             script = argv[++i];
         else if (!strcmp(argv[i], "--mpv-log") && i + 1 < argc)
             mpv_log = argv[++i];
         else if (!strcmp(argv[i], "--shot-dir") && i + 1 < argc)
             shot_dir = argv[++i];
         else if (argv[i][0] == '-') {
-            fprintf(stderr, "usage: %s [--no-menu-audio] [--script STEPS] [--mpv-log FILE]\n"
+            fprintf(stderr, "usage: %s [--script STEPS] [--mpv-log FILE]\n"
                             "       [--shot-dir DIR] [device|iso|VIDEO_TS dir]\n", argv[0]);
             return 2;
         } else
             dev = argv[i];
     }
     t0_ms = now_ms();
+    N.want_aid_src = N.want_sid_src = -1;
+    if (getenv("DISCNAV_DUMP"))
+        dump_file = fopen(getenv("DISCNAV_DUMP"), "wb");
 
     if (dvdnav_open(&N.dvd, dev) != DVDNAV_STATUS_OK)
         die("dvdnav_open failed (no DVD in drive?)");
@@ -608,7 +905,8 @@ int main(int argc, char **argv)
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD))
         die(SDL_GetError());
-    ev_redraw = SDL_RegisterEvents(4);
+    ev_redraw = SDL_RegisterEvents(5);
+    ev_tracks = ev_redraw + 4;
     ev_flush = ev_redraw + 3;
     ev_mpv = ev_redraw + 1;
     ev_shot = ev_redraw + 2;
@@ -627,15 +925,23 @@ int main(int argc, char **argv)
         die("mpv_create");
     mpv_set_option_string(mpv, "vo", "libmpv");
     mpv_set_option_string(mpv, "hwdec", "auto-safe");
+    /* frame threading delays output by ~thread count frames, and nothing
+     * drains it during a still: the one-picture menu would never appear.
+     * SD MPEG-2 needs only one thread anyway. */
+    mpv_set_option_string(mpv, "vd-lavc-threads", "1");
+    /* mpv normally holds the first frame until a second one arrives (to know
+     * its duration); a one-picture still never has a second frame */
+    mpv_set_option_string(mpv, "video-latency-hacks", "yes");
     mpv_set_option_string(mpv, "idle", "yes");
     mpv_set_option_string(mpv, "terminal", "yes");
     mpv_set_option_string(mpv, "msg-level", "all=status");
     mpv_set_option_string(mpv, "cache", "no");
     mpv_set_option_string(mpv, "demuxer-readahead-secs", "0.5");
     mpv_set_option_string(mpv, "demuxer-lavf-format", "mpeg");
-    mpv_set_option_string(mpv, "demuxer-lavf-probesize", "262144");
+    mpv_set_option_string(mpv, "demuxer-lavf-probesize", "1048576");
     mpv_set_option_string(mpv, "demuxer-lavf-analyzeduration", "0.5");
-    mpv_set_option_string(mpv, "sid", "1");
+    /* tracks are chosen by apply_tracks(); never let mpv pick e.g. CC */
+    mpv_set_option_string(mpv, "sid", "no");
     if (mpv_log)
         mpv_set_option_string(mpv, "log-file", mpv_log);
     if (mpv_initialize(mpv) < 0)
@@ -659,10 +965,11 @@ int main(int argc, char **argv)
         die("mpv_render_context_create");
     for (int i = 0; i < P_COUNT; i++)
         mpv_observe_property(mpv, i + 1, prop_names[i], MPV_FORMAT_DOUBLE);
+    mpv_observe_property(mpv, TRACK_LIST_ID, "track-list", MPV_FORMAT_NODE);
     mpv_set_wakeup_callback(mpv, on_mpv_wakeup, NULL);
     mpv_render_context_set_update_callback(rctx, on_mpv_render_update, NULL);
 
-    load_segment(mpv, no_menu_audio);
+    load_segment(mpv);
 
     pthread_t script_tid;
     if (script)
@@ -698,6 +1005,10 @@ int main(int argc, char **argv)
             case SDLK_M:         nav_action(A_ROOT_MENU); break;
             case SDLK_T:         nav_action(A_TITLE_MENU); break;
             case SDLK_BACKSPACE: nav_action(A_GO_UP); break;
+            case SDLK_D:
+                show_debug_rects = !show_debug_rects;
+                redraw = true;
+                break;
             case SDLK_F:
                 SDL_SetWindowFullscreen(win, !(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN));
                 break;
@@ -739,10 +1050,12 @@ int main(int argc, char **argv)
             break;
         }
         default:
-            if (e.type == ev_flush) {
+            if (e.type == ev_tracks) {
+                apply_tracks(mpv);
+            } else if (e.type == ev_flush) {
                 logf_("flush: replacing segment");
                 load_pending = true;
-                load_segment(mpv, no_menu_audio);
+                load_segment(mpv);
             } else if (e.type == ev_shot) {
                 /* captured from the framebuffer after the next redraw, so it
                  * includes our overlay (mpv's own screenshot would not) */
@@ -768,11 +1081,21 @@ int main(int argc, char **argv)
                         uint64_t i = me->reply_userdata - 1;
                         if (i < P_COUNT)
                             props[i] = p->format == MPV_FORMAT_DOUBLE ? *(double *)p->data : 0;
+                        if (me->reply_userdata == TRACK_LIST_ID && p->format == MPV_FORMAT_NODE) {
+                            cache_tracks(p->data);
+                            apply_tracks(mpv);
+                        }
                         redraw = true;
                     }
                     if (me->event_id == MPV_EVENT_FILE_LOADED) {
                         logf_("mpv: segment loaded");
                         load_pending = false;
+                        cur_aid = cur_sid = -2; /* new segment, new track ids */
+                        apply_tracks(mpv);
+                        pthread_mutex_lock(&N.lock);
+                        N.opened = true;
+                        pthread_cond_broadcast(&N.wake);
+                        pthread_mutex_unlock(&N.lock);
                     }
                     if (me->event_id == MPV_EVENT_END_FILE) {
                         mpv_event_end_file *ef = me->data;
@@ -788,7 +1111,7 @@ int main(int argc, char **argv)
                          * again would cancel it and lose its first blocks */
                         if (!load_pending || errors) {
                             load_pending = true;
-                            load_segment(mpv, no_menu_audio);
+                            load_segment(mpv);
                         }
                     }
                 }

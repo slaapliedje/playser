@@ -35,8 +35,10 @@ overlay() { # out.png colour geometry...
         read -r x0 y0 x1 y1 <<<"$g"
         vf+="drawbox=x=$x0:y=$y0:w=$((x1 - x0)):h=$((y1 - y0)):color=$colour:t=6,"
     done
-    ff -f lavfi -i "color=c=black@0.0:s=720x480,format=rgba" -vf "${vf%,}" \
-        -frames:v 1 "$png"
+    # drawbox keeps a transparent canvas's alpha at 0, so draw on opaque
+    # black and key the black out afterwards
+    ff -f lavfi -i "color=c=black:s=720x480" \
+        -vf "${vf%,},format=rgba,colorkey=black:0.01:0" -frames:v 1 "$png"
 }
 
 spumux_xml() { # xml hl.png sel.png "name geometry up down"...
