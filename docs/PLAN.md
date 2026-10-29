@@ -202,7 +202,23 @@ Status (2026-10-28), `app/`:
 - ⬜ Bundle a UI font: the Flatpak's runtime fonts lack the circled button
   letters (Ⓐ Ⓑ) used in hints; better still, SDL3 gamepad-type glyphs.
 - ⬜ UHD vs Blu-ray detection; audio-output failure → PCM fallback.
-- ⬜ First-run MakeMKV setup and LibreDrive check.
+- ⬜ First-run MakeMKV setup and LibreDrive check. Learned on the box
+  (2026-10-29, MakeMKV 2.0.0 copied in for testing):
+  - libbluray appends `.so.0` itself: `LIBAACS_PATH=<dir>/libmmbd`.
+  - libmmbd runs `makemkvcon` (found via `MAKEMKVCON`), which needs
+    **network** (version check, SDF/key downloads): the manifest needs
+    `--share=network`.
+  - An unregistered 2.0.0 refuses to run ("version is too old"): setup
+    must take the user's key (stored only in `~/.MakeMKV`).
+  - **SteamOS doesn't load the `sg` module**, and MakeMKV needs
+    `/dev/sg*` ("can't find any usable optical drives"). Setup must detect
+    this and show the fix (`sudo modprobe sg`, persisted with
+    `/etc/modules-load.d/sg.conf`); udev's uaccess rule then grants the
+    session user access.
+  - With those, Blu-ray playback works in the Flatpak on the box: the
+    Looney Tunes disc opens in ~7.5 s through the Optiarc (no
+    LibreDrive), episodes play, resume and Play all (episode 1 → 2,
+    7.5 s gap) verified 2026-10-29.
 - 🔶 Flatpak manifest `flatpak/io.github.slaapliedje.DiscPlayer.yml`
   (KDE 6.11, media modules from `io.mpv.Mpv`). App ID is provisional.
   Needs: libmmbd from the user's MakeMKV inside the sandbox.

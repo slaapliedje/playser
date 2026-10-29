@@ -35,10 +35,10 @@ app)            # the app (Flatpak) at its home screen, for disc tests
     # test-only: MakeMKV copied from the desktop into $dir/makemkv (the real
     # app will fetch it via extra-data); makemkvcon keeps state in ~/.MakeMKV
     mk="$dir/makemkv"
-    [ -d "$mk" ] && set -- --filesystem="$mk":ro --filesystem=~/.MakeMKV:create \
+    [ -d "$mk" ] && set -- --share=network --filesystem="$mk":ro --filesystem=~/.MakeMKV:create \
         --env=LD_LIBRARY_PATH=/app/lib:"$mk/lib" --env=MAKEMKVCON="$mk/bin/makemkvcon" \
-        --env=LIBAACS_PATH="$mk/lib/libmmbd.so.0" --env=LIBBDPLUS_PATH="$mk/lib/libmmbd.so.0"
-    flatpak run "$@" --env=DISCPLAYER_MPV_LOG="$stamp.log" --env=QT_FORCE_STDERR_LOGGING=1 \
+        --env=LIBAACS_PATH="$mk/lib/libmmbd" --env=LIBBDPLUS_PATH="$mk/lib/libmmbd"
+    flatpak run "$@" $(cat "$dir/flatpak-args" 2>/dev/null) --filesystem="$dir/logs" --env=DISCPLAYER_MPV_LOG="$stamp.log" --env=QT_FORCE_STDERR_LOGGING=1 \
         io.github.slaapliedje.DiscPlayer --fullscreen $(cat "$dir/app-args" 2>/dev/null) >"$stamp.out" 2>&1
     echo "exit $?" >>"$stamp.out"
     exit ;;
