@@ -13,24 +13,37 @@
 #include "Mpv.h"
 #include "UiRenderer.h"
 
-// MakeMKV's libmmbd stands in for libaacs/libbdplus when it's installed
-// (see docs/spike-results.md, 0a). An explicit environment wins.
+// MakeMKV's libmmbd stands in for libaacs/libbdplus (docs/spike-results.md,
+// 0a). Prefer an installed MakeMKV Flatpak (com.makemkv.MakeMKV), so its
+// updates reach us without rebuilding, then the copy bundled in ours, then a
+// host install. An explicit LIBAACS_PATH wins.
 static void setupDecryption()
 {
-    static const char *const dirs[] = { "/usr/lib", "/usr/local/lib", "/app/lib",
-                                        "/app/extra/lib" };
-    for (const char *dir : dirs) {
-        if (QFileInfo::exists(QString::fromLatin1(dir) + "/libmmbd.so.0")) {
-            if (!qEnvironmentVariableIsSet("LIBAACS_PATH"))
-                qputenv("LIBAACS_PATH", "libmmbd");
-            if (!qEnvironmentVariableIsSet("LIBBDPLUS_PATH"))
-                qputenv("LIBBDPLUS_PATH", "libmmbd");
-            // libmmbd only looks for its helper in /usr/bin and
-            // /usr/local/bin; in the Flatpak it lives in /app/bin
-            if (!qEnvironmentVariableIsSet("MAKEMKVCON") && QFileInfo::exists("/app/bin/makemkvcon"))
-                qputenv("MAKEMKVCON", "/app/bin/makemkvcon");
-            return;
-        }
+    if (qEnvironmentVariableIsSet("LIBAACS_PATH"))
+        return;
+    const QString flatpakApp = QStringLiteral("app/com.makemkv.MakeMKV/current/active/files");
+    const QStringList roots = {
+        QDir::home().filePath(".local/share/flatpak/" + flatpakApp),
+        "/var/lib/flatpak/" + flatpakApp,
+        "/app", "/usr", "/usr/local",
+    };
+    for (const QString &root : roots) {
+        const QString lib = root + "/lib";
+        const QString con = root + "/bin/makemkvcon";
+        if (!QFileInfo::exists(lib + "/libmmbd.so.0"))
+            continue;
+        // libbluray appends ".so.0" itself
+        qputenv("LIBAACS_PATH", QFile::encodeName(lib + "/libmmbd"));
+        qputenv("LIBBDPLUS_PATH", QFile::encodeName(lib + "/libmmbd"));
+        // libmmbd only looks for its helper in /usr/bin and /usr/local/bin
+        if (!qEnvironmentVariableIsSet("MAKEMKVCON") && QFileInfo::exists(con))
+            qputenv("MAKEMKVCON", QFile::encodeName(con));
+        // makemkvcon (a child process) must load its own libmakemkv/libdriveio
+        // rather than another copy's; this process has already started
+        const QByteArray path = qgetenv("LD_LIBRARY_PATH");
+        qputenv("LD_LIBRARY_PATH", QFile::encodeName(lib) + (path.isEmpty() ? "" : ":" + path));
+        qInfo("decryption: MakeMKV from %s", qPrintable(root));
+        return;
     }
 }
 

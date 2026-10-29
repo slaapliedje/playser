@@ -202,7 +202,17 @@ Status (2026-10-28), `app/`:
 - ⬜ Bundle a UI font: the Flatpak's runtime fonts lack the circled button
   letters (Ⓐ Ⓑ) used in hints; better still, SDL3 gamepad-type glyphs.
 - ⬜ UHD vs Blu-ray detection; audio-output failure → PCM fallback.
-- ✅ MakeMKV is bundled (2026-10-29): makemkv-oss (LGPL) and makemkv-bin
+- ✅ **An installed MakeMKV Flatpak is preferred** (2026-10-29): the
+  manifest grants read access to `com.makemkv.MakeMKV`'s install folder
+  (user and system), and `setupDecryption()` uses its libmmbd/makemkvcon
+  (with its lib dir on `LD_LIBRARY_PATH` for makemkvcon), so MakeMKV
+  updates from Flathub apply without rebuilding us. Verified on the box:
+  Looney Tunes episode 3 plays with Flathub's MakeMKV 2.0.0 (runtime KDE
+  5.15-25.08; its libmakemkv resolves to the shared FFmpeg 61). Flatpak
+  can't declare app→app dependencies (only runtimes/extensions), so the
+  first-run screen should offer to install it. Longer term for Flathub: a
+  MakeMKV *extension* of our app, updated by Flathub's bot independently.
+- ✅ MakeMKV is also bundled, as the fallback (2026-10-29): makemkv-oss (LGPL) and makemkv-bin
   (redistribution allowed with the EULA referenced; Flathub precedent
   `com.makemkv.MakeMKV`) are Flatpak modules. A Flatpak can't depend on
   another app, only on runtimes/extensions. makemkv-oss 2.0.0 doesn't

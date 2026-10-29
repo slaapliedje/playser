@@ -29,6 +29,10 @@ finish-args:
   - --filesystem=xdg-run/gamescope-0
   - --env=LC_NUMERIC=C
   - --filesystem=~/.MakeMKV:create         # MakeMKV's key and data (user's own)
+  # an installed MakeMKV Flatpak is preferred over the bundled copy, so its
+  # updates apply without rebuilding this app (see setupDecryption())
+  - --filesystem=~/.local/share/flatpak/app/com.makemkv.MakeMKV:ro
+  - --filesystem=/var/lib/flatpak/app/com.makemkv.MakeMKV:ro
 
 cleanup:
   - '*.la'
