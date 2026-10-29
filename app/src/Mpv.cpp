@@ -8,7 +8,13 @@ namespace {
 enum PropId : uint64_t {
     PropPause = 1, PropIdle, PropTimePos, PropDuration, PropTitle, PropChapter,
     PropChapterList, PropTrackList, PropOsdDimensions, PropVideoParams,
+    PropSeeking, PropPausedForCache, PropAudioId, PropSpdif,
 };
+
+// the clock standing still this long while playing is an audio stall;
+// longer while (re)starting playback, as a disc seek can be slow
+constexpr int kStallSecs = 4;
+constexpr int kRestartStallSecs = 8;
 
 // Keys mpv's window forwards to the UI (as "script-message dp-key NAME").
 // Everything else is unbound: input-default-bindings is off.
@@ -114,7 +120,7 @@ Mpv::Transfer transferOf(const QVariantMap &videoParams)
 
 } // namespace
 
-Mpv::Mpv(bool fullscreen, QObject *parent) : QObject(parent)
+Mpv::Mpv(bool fullscreen, const QStringList &options, QObject *parent) : QObject(parent)
 {
     m_mpv = mpv_create();
     if (!m_mpv)
@@ -143,6 +149,14 @@ Mpv::Mpv(bool fullscreen, QObject *parent) : QObject(parent)
     mpv_set_option_string(m_mpv, "osd-level", "0");
     mpv_set_option_string(m_mpv, "sid", "auto");
     mpv_set_option_string(m_mpv, "audio-channels", "auto-safe");
+    // no audio device at all: play silently instead of failing the file
+    mpv_set_option_string(m_mpv, "audio-fallback-to-null", "yes");
+    for (const QString &option : options) {
+        const int eq = option.indexOf('=');
+        if (eq <= 0 || mpv_set_option_string(m_mpv, option.left(eq).toUtf8().constData(),
+                                              option.mid(eq + 1).toUtf8().constData()) < 0)
+            qWarning("mpv: bad option '%s'", qPrintable(option));
+    }
     if (mpv_initialize(m_mpv) < 0)
         qFatal("mpv_initialize failed");
 
@@ -160,6 +174,13 @@ Mpv::Mpv(bool fullscreen, QObject *parent) : QObject(parent)
     mpv_observe_property(m_mpv, PropTrackList, "track-list", MPV_FORMAT_NODE);
     mpv_observe_property(m_mpv, PropOsdDimensions, "osd-dimensions", MPV_FORMAT_NODE);
     mpv_observe_property(m_mpv, PropVideoParams, "video-params", MPV_FORMAT_NODE);
+    mpv_observe_property(m_mpv, PropSeeking, "seeking", MPV_FORMAT_FLAG);
+    mpv_observe_property(m_mpv, PropPausedForCache, "paused-for-cache", MPV_FORMAT_FLAG);
+    mpv_observe_property(m_mpv, PropAudioId, "current-tracks/audio/id", MPV_FORMAT_INT64);
+    mpv_observe_property(m_mpv, PropSpdif, "audio-spdif", MPV_FORMAT_STRING);
+
+    m_audioWatchdog.setInterval(1000);
+    connect(&m_audioWatchdog, &QTimer::timeout, this, &Mpv::checkAudioStall);
 
     mpv_set_wakeup_callback(m_mpv, onMpvWakeup, this);
 }
@@ -244,6 +265,40 @@ void Mpv::sendOverlay(int id, const QImage &image)
                  slot.inFlight);
 }
 
+void Mpv::checkAudioStall()
+{
+    // only while playing with audio. A slow disc read can look the same (the
+    // demuxer buffer reads empty in both cases), but the first steps below
+    // are harmless then
+    const bool moving = m_position != m_lastPosition;
+    m_lastPosition = m_position;
+    // a failed passthrough start never finishes the restart ("seeking")
+    if (moving || !m_loaded || m_paused || m_pausedForCache || !m_hasAudio) {
+        m_stalledSecs = 0;
+        return;
+    }
+    if (++m_stalledSecs < (m_seeking ? kRestartStallSecs : kStallSecs))
+        return;
+    m_stalledSecs = 0;
+
+    // each step gets kStallSecs to work before the next
+    const int step = m_recovery++;
+    if (step == 0 && !m_spdif.isEmpty()) {
+        qWarning("audio: playback stalled; passthrough (%s) off, decoding instead", qPrintable(m_spdif));
+        setMpvProperty("audio-spdif", "");
+        command({ "ao-reload" });
+        emit audioProblem(QStringLiteral("Audio passthrough didn't work, so audio is decoded instead."));
+    } else if (step <= 1) {
+        qWarning("audio: playback stalled; reopening the audio output");
+        command({ "ao-reload" });
+    } else if (step == 2) {
+        qWarning("audio: playback stalled; continuing without sound");
+        setMpvProperty("ao", "null");
+        command({ "ao-reload" });
+        emit audioProblem(QStringLiteral("The audio output stopped responding. Playing without sound."));
+    }
+}
+
 void Mpv::processEvents()
 {
     while (m_mpv) {
@@ -281,6 +336,10 @@ void Mpv::processEvents()
                 }
                 break;
             }
+            case PropSeeking: m_seeking = has && *static_cast<int *>(p->data); break;
+            case PropPausedForCache: m_pausedForCache = has && *static_cast<int *>(p->data); break;
+            case PropAudioId: m_hasAudio = has; break;
+            case PropSpdif: m_spdif = has ? QString::fromUtf8(*static_cast<char **>(p->data)) : QString(); break;
             case PropVideoParams: {
                 const Transfer t = transferOf(has ? nodeToVariant(static_cast<mpv_node *>(p->data)).toMap()
                                                   : QVariantMap());
@@ -321,10 +380,20 @@ void Mpv::processEvents()
             emit closeRequested();
             break;
         case MPV_EVENT_FILE_LOADED:
+            m_loaded = true;
+            m_audioWatchdog.start();
             emit fileLoaded();
             break;
         case MPV_EVENT_START_FILE:
             m_currentEntry = static_cast<mpv_event_start_file *>(ev->data)->playlist_entry_id;
+            m_loaded = false;
+            m_audioWatchdog.stop();
+            m_stalledSecs = 0;
+            // try the real output again for each file; passthrough stays off
+            // once it failed (until the next start of the app)
+            if (m_recovery >= 3)
+                setMpvProperty("ao", "");
+            m_recovery = 0;
             break;
         case MPV_EVENT_END_FILE: {
             auto *ef = static_cast<mpv_event_end_file *>(ev->data);

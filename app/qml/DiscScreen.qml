@@ -127,11 +127,13 @@ FocusScope {
         }
     }
 
-    Text {
+    HintBar {
         id: hints
         anchors { left: parent.left; bottom: parent.bottom; margins: Theme.margin }
-        text: "Ⓐ Play    ▲ ▼ Choose    Ⓑ Back"
-        color: Theme.textDim
-        font.pixelSize: Theme.fontSmall
+        hints: [
+            { buttons: ["south"], text: "Play" },
+            { buttons: ["dpadV"], text: "Choose" },
+            { buttons: ["east"], text: "Back" },
+        ]
     }
 }

@@ -61,12 +61,14 @@ FocusScope {
         font.pixelSize: Theme.fontLarge
     }
 
-    Text {
+    HintBar {
         id: hints
         anchors { left: parent.left; bottom: parent.bottom; margins: Theme.margin }
-        text: "Ⓐ Play    ◀ ▶ Choose drive    ☰ Setup"
-        color: Theme.textDim
-        font.pixelSize: Theme.fontSmall
+        hints: [
+            { buttons: ["south"], text: "Play" },
+            { buttons: ["dpadH"], text: "Choose drive" },
+            { buttons: ["start"], text: "Setup" },
+        ]
     }
 
     component DriveCard: Rectangle {

@@ -3,6 +3,7 @@
 #include <QImage>
 #include <QObject>
 #include <QSize>
+#include <QTimer>
 #include <QVariant>
 #include <QtQml/qqmlregistration.h>
 
@@ -33,7 +34,8 @@ public:
     // Transfer function the video (and so every overlay) is encoded with.
     enum class Transfer { Sdr, Pq, Hlg };
 
-    explicit Mpv(bool fullscreen, QObject *parent = nullptr);
+    // options: extra "name=value" mpv options (testing)
+    explicit Mpv(bool fullscreen, const QStringList &options = {}, QObject *parent = nullptr);
     ~Mpv() override;
 
     // Sets options (e.g. bluray-device), then loads url, starting at
@@ -72,6 +74,9 @@ signals:
     void osdSizeChanged();
     void transferChanged();
     void fileLoaded();
+    // audio output stalled playback and was worked around (AudioWatchdog);
+    // message is for the viewer
+    void audioProblem(const QString &message);
     void endFile(const QString &reason);
     // a key pressed in mpv's window, by mpv key name ("UP", "ENTER", "i")
     void keyPressed(const QString &name);
@@ -89,6 +94,7 @@ private:
         bool shown = false;
     };
     void sendOverlay(int id, const QImage &image);
+    void checkAudioStall();
     void commandAsync(const QVariantList &args, quint64 replyId = 0);
 
     mpv_handle *m_mpv = nullptr;
@@ -105,4 +111,17 @@ private:
     QHash<int, OverlaySlot> m_overlays;
     quint64 m_nextReply = 1000;
     qint64 m_currentEntry = -1; // playlist entry of the latest START_FILE
+
+    // audio watchdog: a failing audio output (e.g. PipeWire "no target node"
+    // for passthrough, docs/spike-results.md 0c) stops mpv's clock and
+    // freezes the picture
+    QTimer m_audioWatchdog;
+    bool m_loaded = false;
+    bool m_seeking = false;
+    bool m_pausedForCache = false;
+    bool m_hasAudio = false;
+    QString m_spdif;
+    double m_lastPosition = -1;
+    int m_stalledSecs = 0;
+    int m_recovery = 0; // steps taken for this file
 };

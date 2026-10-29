@@ -199,9 +199,26 @@ Status (2026-10-28), `app/`:
   (`start=` honoured). Each episode reopens the disc (libbluray + AACS
   init), so Play all has a gap between episodes until libdiscnav keeps
   the disc open (Phase 3).
-- ⬜ Bundle a UI font: the Flatpak's runtime fonts lack the circled button
-  letters (Ⓐ Ⓑ) used in hints; better still, SDL3 gamepad-type glyphs.
-- ⬜ UHD vs Blu-ray detection; audio-output failure → PCM fallback.
+- ✅ **UI font and controller glyphs** (2026-10-29): Inter 4.1 (OFL,
+  variable) is embedded as a Qt resource, so the box (whose runtime only
+  has DejaVu Sans) and desktops look the same. Button hints are drawn
+  (`ButtonGlyph`, `HintBar`), not font characters, and follow the pad last
+  used (SDL3 gamepad type through Steam Input): Xbox letters in colour,
+  PlayStation ✕○□△, Nintendo's swapped A/B. Verified on the box (Inter)
+  and on the desktop (all three styles).
+- ✅ **Audio-output failure no longer freezes the picture** (2026-10-29): a
+  watchdog in `Mpv` notices the clock standing still while playing with
+  audio (4 s; 8 s while mpv is still starting playback, where a failed
+  passthrough start gets stuck) and recovers in steps: passthrough off
+  (decode to PCM), reopen the output, then play without sound
+  (`ao=null`, retried on the next file), with an on-screen notice.
+  `audio-fallback-to-null` covers having no device at all. Verified on the
+  box with TrueHD and AC-3 passthrough (`--mpv-option audio-spdif=...`,
+  silent synthetic clips): frozen before, now recovers after ~8 s and
+  plays to the end; no false trigger in normal playback. The demuxer
+  buffer can't tell a slow disc read from a stall (it reads 0 in both),
+  so a long disc stall may also trip the first, harmless steps.
+- ⬜ UHD vs Blu-ray detection (LibreDrive check on the setup screen).
 - ✅ **An installed MakeMKV Flatpak is preferred** (2026-10-29): the
   manifest grants read access to `com.makemkv.MakeMKV`'s install folder
   (user and system), and `setupDecryption()` uses its libmmbd/makemkvcon

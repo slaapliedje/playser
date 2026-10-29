@@ -8,14 +8,17 @@ FocusScope {
     id: root
 
     required property Mpv mpv
+    required property Gamepad gamepad
 
     // --play: a file or URL without going through a drive
     function playUrl(url) {
+        setup.visible = false
         player.play({ url: url, label: url.split("/").pop() })
     }
 
     // scale the 10-foot UI from a 1080p design size
     Binding { target: Theme; property: "scale"; value: Math.min(root.width / 1920, root.height / 1080) }
+    Binding { target: Theme; property: "buttonStyle"; value: root.gamepad.style }
 
     DiscMonitor { id: discs }
     SystemCheck { id: system }

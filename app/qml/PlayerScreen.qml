@@ -70,6 +70,11 @@ FocusScope {
             root.opening = false
             root.showOsd()
         }
+        function onAudioProblem(message) {
+            notice.text = message
+            noticeBox.opacity = 1
+            noticeTimer.restart()
+        }
         function onEndFile(reason) {
             if (!root.active)
                 return
@@ -149,11 +154,9 @@ FocusScope {
                 color: Theme.textDim
                 font.pixelSize: Theme.fontMedium
             }
-            Text {
+            HintBar {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Ⓑ Cancel"
-                color: Theme.textDim
-                font.pixelSize: Theme.fontSmall
+                hints: [{ buttons: ["east"], text: "Cancel" }]
             }
         }
         Timer {
@@ -217,12 +220,29 @@ FocusScope {
             Item {
                 width: parent.width
                 height: timeText.implicitHeight
-                Text {
-                    id: timeText
-                    text: (root.mpv.paused ? "❚❚  " : "▶  ")
-                          + Theme.formatTime(root.mpv.position) + " / " + Theme.formatTime(root.mpv.duration)
-                    color: Theme.text
-                    font.pixelSize: Theme.fontSmall
+                Row {
+                    spacing: Theme.spacing * 0.5
+                    // pause: two bars (no font has a dependable ⏸)
+                    Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: root.mpv.paused
+                        spacing: Theme.fontSmall * 0.18
+                        Repeater {
+                            model: 2
+                            Rectangle {
+                                width: Theme.fontSmall * 0.22
+                                height: Theme.fontSmall * 0.75
+                                color: Theme.text
+                            }
+                        }
+                    }
+                    Text {
+                        id: timeText
+                        text: (root.mpv.paused ? "" : "▶  ")
+                              + Theme.formatTime(root.mpv.position) + " / " + Theme.formatTime(root.mpv.duration)
+                        color: Theme.text
+                        font.pixelSize: Theme.fontSmall
+                    }
                 }
                 Text {
                     anchors.right: parent.right
@@ -233,11 +253,42 @@ FocusScope {
                 }
             }
 
-            Text {
-                text: "Ⓐ Pause    ◀ ▶ Seek    LB RB Chapter    Ⓨ Audio & subtitles    Ⓑ Stop"
-                color: Theme.textDim
-                font.pixelSize: Theme.fontSmall * 0.85
+            HintBar {
+                textSize: Theme.fontSmall * 0.85
+                hints: [
+                    { buttons: ["south"], text: root.mpv.paused ? "Play" : "Pause" },
+                    { buttons: ["dpadH"], text: "Seek" },
+                    { buttons: ["lb", "rb"], text: "Chapter" },
+                    { buttons: ["north"], text: "Audio & subtitles" },
+                    { buttons: ["east"], text: "Stop" },
+                ]
             }
+        }
+    }
+
+    // ---- notices (e.g. audio fallback) ----
+    Rectangle {
+        id: noticeBox
+        anchors { top: parent.top; horizontalCenter: parent.horizontalCenter; topMargin: Theme.margin }
+        width: Math.min(notice.implicitWidth, parent.width - 4 * Theme.margin) + Theme.spacing * 2
+        height: notice.height + Theme.spacing
+        radius: Theme.radius / 2
+        color: Theme.surfaceRaised
+        opacity: 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 300 } }
+        Text {
+            id: notice
+            anchors.centerIn: parent
+            width: Math.min(implicitWidth, root.width - 4 * Theme.margin)
+            color: Theme.text
+            font.pixelSize: Theme.fontSmall
+            wrapMode: Text.Wrap
+        }
+        Timer {
+            id: noticeTimer
+            interval: 8000
+            onTriggered: noticeBox.opacity = 0
         }
     }
 

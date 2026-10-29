@@ -25,12 +25,40 @@ int keyForButton(int button)
     }
 }
 
+// Steam Input's virtual pads report the real controller's type
+QString styleFor(SDL_Gamepad *pad)
+{
+    switch (SDL_GetGamepadType(pad)) {
+    case SDL_GAMEPAD_TYPE_PS3:
+    case SDL_GAMEPAD_TYPE_PS4:
+    case SDL_GAMEPAD_TYPE_PS5:
+        return QStringLiteral("playstation");
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+        return QStringLiteral("nintendo");
+    default:
+        return QStringLiteral("xbox");
+    }
+}
+
 bool repeats(int key)
 {
     return key == Qt::Key_Up || key == Qt::Key_Down || key == Qt::Key_Left || key == Qt::Key_Right;
 }
 
 } // namespace
+
+void Gamepad::setStyle(const QString &style)
+{
+    QMetaObject::invokeMethod(this, [this, style] {
+        if (style == m_style)
+            return;
+        m_style = style;
+        emit styleChanged();
+    });
+}
 
 void Gamepad::run()
 {
@@ -58,8 +86,11 @@ void Gamepad::run()
         while (SDL_WaitEventTimeout(&e, timeout)) {
             switch (e.type) {
             case SDL_EVENT_GAMEPAD_ADDED:
-                if (SDL_Gamepad *pad = SDL_OpenGamepad(e.gdevice.which))
-                    qInfo("gamepad: connected %s", SDL_GetGamepadName(pad));
+                if (SDL_Gamepad *pad = SDL_OpenGamepad(e.gdevice.which)) {
+                    qInfo("gamepad: connected %s (%s)", SDL_GetGamepadName(pad),
+                          SDL_GetGamepadStringForType(SDL_GetGamepadType(pad)));
+                    setStyle(styleFor(pad));
+                }
                 break;
             case SDL_EVENT_GAMEPAD_REMOVED:
                 if (SDL_Gamepad *pad = SDL_GetGamepadFromID(e.gdevice.which))
@@ -67,6 +98,8 @@ void Gamepad::run()
                 heldKey = stickKey = 0;
                 break;
             case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+                if (SDL_Gamepad *pad = SDL_GetGamepadFromID(e.gbutton.which))
+                    setStyle(styleFor(pad));
                 if (int key = keyForButton(e.gbutton.button))
                     press(key);
                 break;

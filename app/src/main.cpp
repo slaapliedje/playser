@@ -1,5 +1,6 @@
 #include <QCommandLineParser>
 #include <QDir>
+#include <QFontDatabase>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QQmlComponent>
@@ -105,6 +106,11 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName("discplayer");
     app.setOrganizationName("discplayer"); // settings: ~/.config/discplayer/
+    // the same type everywhere: SteamOS's runtime only has DejaVu Sans, and
+    // desktop hosts vary (data/fonts, SIL OFL)
+    const int font = QFontDatabase::addApplicationFont(":/fonts/InterVariable.ttf");
+    if (font >= 0)
+        app.setFont(QFont(QFontDatabase::applicationFontFamilies(font).value(0)));
     // libmpv requires the C numeric locale; Qt sets the user's
     std::setlocale(LC_NUMERIC, "C");
 
@@ -115,11 +121,13 @@ int main(int argc, char *argv[])
         { "script", "Scripted input for tests.", "steps" },
         { "shot-dir", "Directory for script screenshots.", "dir", "." },
         { "play", "Play a file or URL directly (testing without a drive).", "url" },
+        { "mpv-option", "Set an mpv option, e.g. audio-spdif=ac3 (testing).", "name=value" },
     });
     args.process(app);
 
-    Mpv mpv(args.isSet("fullscreen"));
+    Mpv mpv(args.isSet("fullscreen"), args.values("mpv-option"));
     QQmlEngine engine;
+    Gamepad gamepad; // outlives the UI, which binds to it
     UiRenderer ui(&mpv);
     QObject::connect(&mpv, &Mpv::closeRequested, &app, &QGuiApplication::quit);
     QObject::connect(&mpv, &Mpv::keyPressed, &ui, [&ui](const QString &name) {
@@ -128,7 +136,8 @@ int main(int argc, char *argv[])
     });
 
     QQmlComponent component(&engine, "DiscPlayer", "Main");
-    QObject *root = component.createWithInitialProperties({ { "mpv", QVariant::fromValue(&mpv) } });
+    QObject *root = component.createWithInitialProperties({
+        { "mpv", QVariant::fromValue(&mpv) }, { "gamepad", QVariant::fromValue(&gamepad) } });
     auto *rootItem = qobject_cast<QQuickItem *>(root);
     if (!rootItem) {
         qCritical("%s", qPrintable(component.errorString()));
@@ -138,7 +147,6 @@ int main(int argc, char *argv[])
     if (args.isSet("play"))
         QMetaObject::invokeMethod(rootItem, "playUrl", QVariant(args.value("play")));
 
-    Gamepad gamepad;
     QObject::connect(&gamepad, &Gamepad::keyPressed, &ui, &UiRenderer::deliverKey);
     gamepad.start();
 

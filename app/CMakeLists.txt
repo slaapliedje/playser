@@ -38,6 +38,8 @@ qt_add_qml_module(discplayer
         qml/Resume.qml
         qml/DiscScreen.qml
         qml/SetupScreen.qml
+        qml/ButtonGlyph.qml
+        qml/HintBar.qml
 )
 
 target_include_directories(discplayer PRIVATE src)
@@ -48,9 +50,16 @@ qt_add_resources(discplayer discdb
     BASE data
     FILES data/discdb-index.json.gz)
 
+# UI font (Inter, SIL Open Font License)
+qt_add_resources(discplayer fonts
+    PREFIX /
+    BASE data
+    FILES data/fonts/InterVariable.ttf)
+
 target_link_libraries(discplayer PRIVATE
     Qt6::Quick Qt6::DBus PkgConfig::MPV PkgConfig::SDL3 ZLIB::ZLIB)
 
 include(GNUInstallDirs)
 install(TARGETS discplayer RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES data/THEDISCDB-LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/discplayer)
+install(FILES data/fonts/INTER-LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/discplayer)

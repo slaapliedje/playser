@@ -4,6 +4,8 @@ import QtQuick
 QtObject {
     // 10-foot UI: sized for a TV at couch distance, scaled from 1080p
     property real scale: 1.0
+    // controller whose buttons the hints draw: "xbox", "playstation", "nintendo"
+    property string buttonStyle: "xbox"
 
     readonly property color background: "#0b0f17"
     readonly property color surface: "#151b27"
