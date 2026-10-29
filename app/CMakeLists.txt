@@ -4,7 +4,7 @@ project(discplayer VERSION 0.1 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Quick DBus OpenGL)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Quick DBus)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
 pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
@@ -20,7 +20,10 @@ qt_add_qml_module(discplayer
     URI DiscPlayer
     VERSION 1.0
     SOURCES
-        src/MpvItem.h src/MpvItem.cpp
+        src/Mpv.h src/Mpv.cpp
+        src/UiRenderer.h src/UiRenderer.cpp
+        src/OverlayEncoder.h src/OverlayEncoder.cpp
+        src/ScreenSaverInhibitor.h src/ScreenSaverInhibitor.cpp
         src/DiscMonitor.h src/DiscMonitor.cpp
         src/Gamepad.h src/Gamepad.cpp
     QML_FILES
@@ -34,4 +37,7 @@ qt_add_qml_module(discplayer
 target_include_directories(discplayer PRIVATE src)
 
 target_link_libraries(discplayer PRIVATE
-    Qt6::Quick Qt6::DBus Qt6::OpenGL PkgConfig::MPV PkgConfig::SDL3)
+    Qt6::Quick Qt6::DBus PkgConfig::MPV PkgConfig::SDL3)
+
+include(GNUInstallDirs)
+install(TARGETS discplayer RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

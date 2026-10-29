@@ -22,6 +22,10 @@ gamescope, and zero-fuss MakeMKV/UHD playback with menus.
   libbdplus replacement for libbluray (AACS, AACS 2.0 / UHD). The user supplies
   their own MakeMKV license. UHD requires a LibreDrive-compatible drive.
 - **UI: Qt6/QML** on `org.kde.Platform`; gamepad via SDL3 / Steam Input.
+- **mpv owns the only window** (`vo=gpu-next`, Vulkan, HDR10). The QML UI is
+  rendered off-screen (Qt Quick software backend, 1080p) and composited by
+  mpv as an `overlay-add` bitmap, re-encoded to PQ/HLG over HDR video
+  (spike 0d). Disc menu graphics will use the same path.
 - **Packaging: Flatpak.** GitHub releases first, Flathub as the end goal (free
   app; users buy MakeMKV separately).
 
@@ -35,7 +39,7 @@ gamescope, and zero-fuss MakeMKV/UHD playback with menus.
 ├─────────────────────────────────────────────┤
 │  libdiscnav  (menus, nav events, overlays)  │
 ├─────────────────────────────────────────────┤
-│  libmpv render API (Vulkan/GL)              │
+│  libmpv, own window: video + overlays (HDR) │
 │   └─ libbluray → libmmbd (user's MakeMKV)   │
 └─────────────────────────────────────────────┘
 ```
@@ -58,8 +62,8 @@ Hard problems:
   PTS-tagged events).
 - **Still frames / looping menus:** hold a frame indefinitely, or loop a
   motion menu, while the user navigates.
-- **Overlays:** button highlights drawn by mpv `overlay-add` or our own
-  render layer (QML is likely cleaner).
+- **Overlays:** button highlights drawn by mpv `overlay-add`, encoded in
+  the video's colorspace like the UI layer (spike 0d).
 - **Discontinuities:** clean flushes on title/menu jumps without mpv
   treating them as EOF.
 
@@ -77,7 +81,8 @@ all UHD discs).
 - LibreDrive: the app detects and reports status (via MakeMKV) but never
   flashes firmware. Point users to MakeMKV's docs/forum; crossflashing
   (e.g. BU50N → BU40N firmware) is the user's own risk.
-- libdvdcss on Flathub: unresolved; check VLC's Flathub manifest for precedent.
+- libdvdcss on Flathub: precedent exists; Flathub's own `io.mpv.Mpv` builds
+  and ships it.
 - Lessons from the user's Legion Go 2 setup (`~/dev/legiongo2`):
   - Keep everything in `$HOME` or Flatpak; that's what survives SteamOS
     updates.
@@ -137,20 +142,28 @@ Status (2026-10-28), `app/`:
   `DiscMonitor` (udisks2), `Gamepad` (SDL3 → key events), home screen,
   player OSD (seek, chapters, progress), audio/subtitle picker. Verified by
   scripted screenshots (`--script`) with the UHD and *Airheads* discs.
-- ⬜ **HDR in the app.** The libmpv render API is OpenGL-only, and Qt Quick
-  composites it into an SDR scene, so the app currently tone-maps to SDR
-  even though spike 0c proved HDR10 works when mpv owns a Vulkan swapchain.
-  Needs a spike: mpv in its own window (`--wid` embed or a separate
-  gamescope window) with the QML UI layered on top, or Qt's HDR swapchain
-  support plus a Vulkan render path.
+- ✅ **HDR architecture** (2026-10-29): mpv owns the window; `UiRenderer`
+  renders QML off-screen into a mpv overlay, `OverlayEncoder` re-encodes it
+  for PQ/HLG video. Render + encode ≈5 ms per changed frame. Verified on
+  the desktop with the DVD and the UHD (SDR display).
+  - ✅ Verified on the box in Game Mode via the Flatpak: HDR10 swapchain,
+    UI text measured 188 nits (expected ~180 for `#eef1f6` at 203-nit
+    white), panels 2–4 nits; OSD, pause, track picker all composited.
+  - ✅ Screensaver: Steam's Game Mode screensaver owns
+    `org.freedesktop.ScreenSaver`; the app inhibits it while playing
+    (`ScreenSaverInhibitor`, verified against KDE; Steam accepts the call).
+    A screensaver that is already showing stays above a newly launched game.
+  - ⬜ Known: on SDR displays, PQ overlays get mpv's black-point lift (dark
+    panels ~21→41); matters for HDR content on a Deck LCD.
 - ⬜ Real controller test (Steam Input on the box, Legion Go 2).
 - ⬜ "Opening disc…" state: a UHD takes ~22 s to open (spin-up + MakeMKV
   + 55 playlists) and currently shows black.
 - ⬜ UHD vs Blu-ray detection; own main-feature heuristic for obfuscated
   discs; audio-output failure → PCM fallback.
 - ⬜ First-run MakeMKV setup and LibreDrive check.
-- ⬜ Flatpak manifest (KDE runtime, gamescope layer, `xdg-run/gamescope-0`,
-  `--system-talk-name=org.freedesktop.UDisks2`, `--device=all`).
+- 🔶 Flatpak manifest `flatpak/io.github.slaapliedje.DiscPlayer.yml`
+  (KDE 6.11, media modules from `io.mpv.Mpv`). App ID is provisional.
+  Needs: libmmbd from the user's MakeMKV inside the sandbox.
 
 ### Phase 2 — libdiscnav: DVD menus
 Own repo/library from day one; integrate into the app.

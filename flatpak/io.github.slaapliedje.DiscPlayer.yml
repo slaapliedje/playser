@@ -1,0 +1,165 @@
+# Disc Player Flatpak. Media modules follow Flathub's io.mpv.Mpv manifest,
+# trimmed to playback (no encoders, scripting or network extras).
+#
+#   flatpak-builder --user --install --force-clean build/flatpak \
+#       flatpak/io.github.slaapliedje.DiscPlayer.yml
+#
+# HDR under gamescope also needs org.freedesktop.Platform.VulkanLayer.gamescope
+# on the runtime's freedesktop branch (25.08 for KDE 6.11), see
+# docs/spike-results.md 0c.
+id: io.github.slaapliedje.DiscPlayer
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: discplayer
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0:ro
+  - --device=all                        # /dev/sr*, GPU, gamepads
+  - --system-talk-name=org.freedesktop.UDisks2
+  - --talk-name=org.freedesktop.ScreenSaver   # inhibit during playback
+  # gamescope's Vulkan WSI layer talks to gamescope over this socket; without
+  # it HDR swapchains fail ("Hooking has failed somewhere!")
+  - --filesystem=xdg-run/gamescope-0
+  - --env=LC_NUMERIC=C
+
+cleanup:
+  - '*.la'
+  - '*.a'
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - /share/doc
+
+modules:
+  - name: libdvdread
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.videolan.org/pub/videolan/libdvdread/7.1.1/libdvdread-7.1.1.tar.xz
+        sha256: a0d47876548bec806774bbf8dbf20bb19ba139464383156b32eb8e59915b90a9
+
+  - name: libdvdnav
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.videolan.org/pub/videolan/libdvdnav/7.0.0/libdvdnav-7.0.0.tar.xz
+        sha256: a2a18f5ad36d133c74bf9106b6445806fa253b09141a46392550394b647b221e
+
+  # also shipped by Flathub's io.mpv.Mpv
+  - name: libdvdcss
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.videolan.org/pub/libdvdcss/1.6.0/libdvdcss-1.6.0.tar.xz
+        sha256: 7ea556c846b7bfc32d47b41cae56d1863a6b6d5f706bb162778d6f298490977c
+
+  # AACS/BD+ come from the user's MakeMKV (libmmbd) at runtime; BD-J (Phase 4)
+  # will need the jar and a JDK extension
+  - name: libbluray
+    buildsystem: meson
+    config-opts:
+      - -Dbdj_jar=disabled
+    sources:
+      - type: archive
+        url: https://download.videolan.org/pub/videolan/libbluray/1.5.0/libbluray-1.5.0.tar.xz
+        sha256: f676408e91a5d321abf8b8d4dfdae36205c297dab5c54c3ec519639025f474a2
+
+  - name: libass
+    config-opts:
+      - --disable-static
+      - --enable-asm
+      - --enable-harfbuzz
+      - --enable-fontconfig
+    sources:
+      - type: git
+        url: https://github.com/libass/libass.git
+        tag: 0.17.5
+        commit: 4a05d8127f525943ebf45fdc6497c9e665947f0d
+
+  - name: ffmpeg
+    cleanup:
+      - /bin
+      - /share/ffmpeg
+    config-opts:
+      - --disable-debug
+      - --disable-doc
+      - --disable-static
+      - --disable-programs
+      - --disable-encoders
+      - --enable-encoder=png,mjpeg   # mpv screenshots
+      - --disable-muxers
+      - --enable-gpl
+      - --enable-version3
+      - --enable-shared
+      - --enable-gnutls
+      - --enable-libass
+      - --enable-libdav1d
+      - --enable-libfreetype
+      - --enable-libdrm
+      - --enable-vaapi
+      - --enable-vulkan
+      - --enable-libbluray
+    sources:
+      - type: git
+        url: https://github.com/FFmpeg/FFmpeg.git
+        tag: n9.0.2
+        commit: 946fcce07b6dcd0331c8cc609192aeff5e1924f8
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=enabled
+      - -Dshaderc=enabled
+      - -Ddemos=false
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.387.0
+        commit: 275f7dea27924cdd34ab2e6c20e448b6bc4fab65
+
+  # mpv's X11 backend (gamescope runs it under Xwayland)
+  - name: libXpresent
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/xorg/lib/libxpresent.git
+        tag: libXpresent-1.0.2
+        commit: 4d92149372461bf575e8a09b1064a2884c38c3aa
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dbuild-date=false
+      - -Dwerror=false
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Ddvdnav=enabled
+      - -Dlibbluray=enabled
+      - -Dvulkan=enabled
+      - -Dvaapi=enabled
+      - -Dwayland=enabled
+      - -Dx11=enabled
+      - -Dpipewire=enabled
+      - -Dpulse=enabled
+      - -Dlcms2=enabled
+      - -Dzimg=disabled
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.41.0
+        commit: 41f6a645068483470267271e1d09966ca3b9f413
+
+  - name: discplayer
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    sources:
+      - type: dir
+        path: ../app

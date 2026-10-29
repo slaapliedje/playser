@@ -6,7 +6,7 @@ import DiscPlayer
 FocusScope {
     id: root
 
-    required property MpvItem mpv
+    required property Mpv mpv
     signal dismissed()
 
     visible: false

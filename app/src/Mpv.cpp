@@ -1,18 +1,20 @@
-#include "MpvItem.h"
+#include "Mpv.h"
 
-#include <QOpenGLContext>
 #include <cmath>
-#include <QOpenGLFramebufferObject>
-#include <QQuickOpenGLUtils>
-#include <QQuickWindow>
 #include <mpv/client.h>
-#include <mpv/render_gl.h>
 
 namespace {
 
 enum PropId : uint64_t {
     PropPause = 1, PropIdle, PropTimePos, PropDuration, PropTitle, PropChapter,
-    PropChapterList, PropTrackList,
+    PropChapterList, PropTrackList, PropOsdDimensions, PropVideoParams,
+};
+
+// Keys mpv's window forwards to the UI (as "script-message dp-key NAME").
+// Everything else is unbound: input-default-bindings is off.
+const char *const kForwardedKeys[] = {
+    "UP", "DOWN", "LEFT", "RIGHT", "ENTER", "KP_ENTER", "ESC", "BS", "SPACE",
+    "PGUP", "PGDWN", "MENU", "i", "m",
 };
 
 QVariant nodeToVariant(const mpv_node *n)
@@ -95,71 +97,24 @@ struct NodeBuilder {
     NodeBuilder() { lists.reserve(64); nodeLists.reserve(64); store.reserve(64); }
 };
 
-void *getProcAddress(void *, const char *name)
-{
-    QOpenGLContext *ctx = QOpenGLContext::currentContext();
-    return ctx ? reinterpret_cast<void *>(ctx->getProcAddress(name)) : nullptr;
-}
-
-void onMpvUpdate(void *ctx)
-{
-    // render thread or mpv thread: just schedule a frame on the GUI thread
-    emit static_cast<MpvItem *>(ctx)->requestUpdate();
-}
-
 void onMpvWakeup(void *ctx)
 {
-    QMetaObject::invokeMethod(static_cast<MpvItem *>(ctx), "processEvents", Qt::QueuedConnection);
+    QMetaObject::invokeMethod(static_cast<Mpv *>(ctx), "processEvents", Qt::QueuedConnection);
 }
 
-class MpvRenderer : public QQuickFramebufferObject::Renderer
+Mpv::Transfer transferOf(const QVariantMap &videoParams)
 {
-public:
-    explicit MpvRenderer(MpvItem *item) : m_item(item) {}
-
-    QOpenGLFramebufferObject *createFramebufferObject(const QSize &size) override
-    {
-        mpv_render_context *&m_ctx = m_item->renderContext;
-        if (!m_ctx) {
-            mpv_opengl_init_params gl{ getProcAddress, nullptr };
-            int advanced = 1;
-            mpv_render_param params[] = {
-                { MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_OPENGL) },
-                { MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl },
-                { MPV_RENDER_PARAM_ADVANCED_CONTROL, &advanced },
-                { MPV_RENDER_PARAM_INVALID, nullptr },
-            };
-            if (mpv_render_context_create(&m_ctx, m_item->handle(), params) < 0)
-                qFatal("mpv_render_context_create failed");
-            mpv_render_context_set_update_callback(m_ctx, onMpvUpdate, m_item);
-        }
-        return QQuickFramebufferObject::Renderer::createFramebufferObject(size);
-    }
-
-    void render() override
-    {
-        QOpenGLFramebufferObject *fbo = framebufferObject();
-        mpv_opengl_fbo mfbo{ int(fbo->handle()), fbo->width(), fbo->height(), 0 };
-        int flipY = 0;
-        int block = 0; // never sleep on the render thread (0b lesson)
-        mpv_render_param params[] = {
-            { MPV_RENDER_PARAM_OPENGL_FBO, &mfbo },
-            { MPV_RENDER_PARAM_FLIP_Y, &flipY },
-            { MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &block },
-            { MPV_RENDER_PARAM_INVALID, nullptr },
-        };
-        mpv_render_context_update(m_item->renderContext);
-        mpv_render_context_render(m_item->renderContext, params);
-        QQuickOpenGLUtils::resetOpenGLState(); // mpv leaves raw GL state behind
-    }
-
-private:
-    MpvItem *m_item;
-};
+    const QString gamma = videoParams.value("gamma").toString();
+    if (gamma == "pq")
+        return Mpv::Transfer::Pq;
+    if (gamma == "hlg")
+        return Mpv::Transfer::Hlg;
+    return Mpv::Transfer::Sdr;
+}
 
 } // namespace
 
-MpvItem::MpvItem(QQuickItem *parent) : QQuickFramebufferObject(parent)
+Mpv::Mpv(bool fullscreen, QObject *parent) : QObject(parent)
 {
     m_mpv = mpv_create();
     if (!m_mpv)
@@ -170,19 +125,30 @@ MpvItem::MpvItem(QQuickItem *parent) : QQuickFramebufferObject(parent)
         mpv_set_option_string(m_mpv, "log-file", debug.constData());
         mpv_set_option_string(m_mpv, "msg-level", "all=v");
     }
-    mpv_set_option_string(m_mpv, "vo", "libmpv");
+    mpv_set_option_string(m_mpv, "config", "no");
+    mpv_set_option_string(m_mpv, "vo", "gpu-next");
+    // HDR10 passthrough to gamescope/the compositor (spike 0c)
+    mpv_set_option_string(m_mpv, "target-colorspace-hint", "yes");
     mpv_set_option_string(m_mpv, "hwdec", "auto-safe");
+    mpv_set_option_string(m_mpv, "force-window", "yes");
     mpv_set_option_string(m_mpv, "idle", "yes");
     mpv_set_option_string(m_mpv, "keep-open", "no");
+    mpv_set_option_string(m_mpv, "fullscreen", fullscreen ? "yes" : "no");
+    mpv_set_option_string(m_mpv, "geometry", "1280x720");
+    mpv_set_option_string(m_mpv, "keepaspect-window", "no");
+    mpv_set_option_string(m_mpv, "title", "Disc Player");
+    mpv_set_option_string(m_mpv, "cursor-autohide", "always");
     mpv_set_option_string(m_mpv, "input-default-bindings", "no");
-    mpv_set_option_string(m_mpv, "input-vo-keyboard", "no");
     mpv_set_option_string(m_mpv, "osc", "no");
-    mpv_set_option_string(m_mpv, "config", "no");
     mpv_set_option_string(m_mpv, "osd-level", "0");
     mpv_set_option_string(m_mpv, "sid", "auto");
     mpv_set_option_string(m_mpv, "audio-channels", "auto-safe");
     if (mpv_initialize(m_mpv) < 0)
         qFatal("mpv_initialize failed");
+
+    for (const char *key : kForwardedKeys)
+        commandAsync({ "keybind", key, QStringLiteral("script-message dp-key %1").arg(key) });
+    commandAsync({ "keybind", "CLOSE_WIN", "script-message dp-close" });
 
     mpv_observe_property(m_mpv, PropPause, "pause", MPV_FORMAT_FLAG);
     mpv_observe_property(m_mpv, PropIdle, "idle-active", MPV_FORMAT_FLAG);
@@ -192,55 +158,90 @@ MpvItem::MpvItem(QQuickItem *parent) : QQuickFramebufferObject(parent)
     mpv_observe_property(m_mpv, PropChapter, "chapter", MPV_FORMAT_INT64);
     mpv_observe_property(m_mpv, PropChapterList, "chapter-list", MPV_FORMAT_NODE);
     mpv_observe_property(m_mpv, PropTrackList, "track-list", MPV_FORMAT_NODE);
+    mpv_observe_property(m_mpv, PropOsdDimensions, "osd-dimensions", MPV_FORMAT_NODE);
+    mpv_observe_property(m_mpv, PropVideoParams, "video-params", MPV_FORMAT_NODE);
 
-    connect(this, &MpvItem::requestUpdate, this, &QQuickItem::update, Qt::QueuedConnection);
     mpv_set_wakeup_callback(m_mpv, onMpvWakeup, this);
 }
 
-MpvItem::~MpvItem()
+Mpv::~Mpv()
 {
     mpv_set_wakeup_callback(m_mpv, nullptr, nullptr);
-    // Same order as mpv's Qt example: the item is destroyed at shutdown,
-    // after the window has stopped rendering.
-    if (renderContext)
-        mpv_render_context_free(renderContext);
+    // waits for pending commands, so overlay bitmaps are still alive here
     mpv_terminate_destroy(m_mpv);
 }
 
-QQuickFramebufferObject::Renderer *MpvItem::createRenderer() const
-{
-    window()->setPersistentGraphics(true);
-    window()->setPersistentSceneGraph(true);
-    return new MpvRenderer(const_cast<MpvItem *>(this));
-}
-
-void MpvItem::load(const QString &url, const QVariantMap &options)
+void Mpv::load(const QString &url, const QVariantMap &options)
 {
     for (auto it = options.cbegin(); it != options.cend(); ++it)
         setMpvProperty(it.key(), it.value());
     command({ "loadfile", url });
 }
 
-void MpvItem::stop()
+void Mpv::stop()
 {
     command({ "stop" });
 }
 
-void MpvItem::command(const QVariantList &args)
+void Mpv::command(const QVariantList &args)
+{
+    commandAsync(args);
+}
+
+void Mpv::commandAsync(const QVariantList &args, quint64 replyId)
 {
     NodeBuilder b;
     mpv_node node = b.build(args);
-    mpv_command_node_async(m_mpv, 0, &node);
+    mpv_command_node_async(m_mpv, replyId, &node);
 }
 
-void MpvItem::setMpvProperty(const QString &name, const QVariant &value)
+void Mpv::setMpvProperty(const QString &name, const QVariant &value)
 {
     NodeBuilder b;
     mpv_node node = b.build(value);
     mpv_set_property_async(m_mpv, 0, name.toUtf8().constData(), MPV_FORMAT_NODE, &node);
 }
 
-void MpvItem::processEvents()
+void Mpv::screenshot(const QString &path)
+{
+    command({ "screenshot-to-file", path, "window" });
+}
+
+void Mpv::setOverlay(int id, const QImage &image)
+{
+    OverlaySlot &slot = m_overlays[id];
+    if (slot.inFlight) {
+        slot.queued = image;
+        slot.hasQueued = true;
+        return;
+    }
+    sendOverlay(id, image);
+}
+
+void Mpv::sendOverlay(int id, const QImage &image)
+{
+    OverlaySlot &slot = m_overlays[id];
+    if (image.isNull() && !slot.shown)
+        return;
+    slot.inFlight = ++m_nextReply;
+    slot.sending = image;
+    if (image.isNull()) {
+        slot.shown = false;
+        commandAsync({ "overlay-remove", id }, slot.inFlight);
+        return;
+    }
+    Q_ASSERT(image.format() == QImage::Format_ARGB32_Premultiplied);
+    slot.shown = true;
+    const QSize display = m_osdSize.isEmpty() ? image.size() : m_osdSize;
+    // mpv reads (and copies) the memory when the command runs, so `sending`
+    // keeps the image alive until the reply arrives
+    const QString address = QStringLiteral("&%1").arg(quintptr(image.constBits()));
+    commandAsync({ "overlay-add", id, 0, 0, address, 0, "bgra", image.width(), image.height(),
+                   qlonglong(image.bytesPerLine()), display.width(), display.height() },
+                 slot.inFlight);
+}
+
+void Mpv::processEvents()
 {
     while (m_mpv) {
         mpv_event *ev = mpv_wait_event(m_mpv, 0);
@@ -268,9 +269,54 @@ void MpvItem::processEvents()
                 m_tracks = has ? nodeToVariant(static_cast<mpv_node *>(p->data)).toList() : QVariantList();
                 emit tracksChanged();
                 break;
+            case PropOsdDimensions: {
+                const QVariantMap d = has ? nodeToVariant(static_cast<mpv_node *>(p->data)).toMap() : QVariantMap();
+                const QSize size(d.value("w").toInt(), d.value("h").toInt());
+                if (size != m_osdSize) {
+                    m_osdSize = size;
+                    emit osdSizeChanged();
+                }
+                break;
+            }
+            case PropVideoParams: {
+                const Transfer t = transferOf(has ? nodeToVariant(static_cast<mpv_node *>(p->data)).toMap()
+                                                  : QVariantMap());
+                if (t != m_transfer) {
+                    m_transfer = t;
+                    emit transferChanged();
+                }
+                break;
+            }
             }
             break;
         }
+        case MPV_EVENT_COMMAND_REPLY:
+            for (auto it = m_overlays.begin(); it != m_overlays.end(); ++it) {
+                OverlaySlot &slot = it.value();
+                if (!slot.inFlight || slot.inFlight != ev->reply_userdata)
+                    continue;
+                if (ev->error < 0)
+                    qWarning("mpv: overlay %d: %s", it.key(), mpv_error_string(ev->error));
+                slot.inFlight = 0;
+                slot.sending = QImage();
+                if (slot.hasQueued) {
+                    slot.hasQueued = false;
+                    sendOverlay(it.key(), std::exchange(slot.queued, QImage()));
+                }
+                break;
+            }
+            break;
+        case MPV_EVENT_CLIENT_MESSAGE: {
+            auto *msg = static_cast<mpv_event_client_message *>(ev->data);
+            if (msg->num_args == 2 && qstrcmp(msg->args[0], "dp-key") == 0)
+                emit keyPressed(QString::fromUtf8(msg->args[1]));
+            else if (msg->num_args == 1 && qstrcmp(msg->args[0], "dp-close") == 0)
+                emit closeRequested();
+            break;
+        }
+        case MPV_EVENT_SHUTDOWN:
+            emit closeRequested();
+            break;
         case MPV_EVENT_FILE_LOADED:
             emit fileLoaded();
             break;
@@ -281,7 +327,6 @@ void MpvItem::processEvents()
             emit endFile(QString::fromLatin1(r >= 0 && r <= 5 ? reasons[r] : "unknown"));
             break;
         }
-        case MPV_EVENT_LOG_MESSAGE:
         default:
             break;
         }

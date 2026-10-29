@@ -23,6 +23,14 @@ hdr-overlay)    # spike 0d: SDR UI bitmap composited by mpv over HDR video
 hdr-overlay-pq) # same, bitmap pre-encoded as BT.2020 PQ (mpv blends in the video's space)
     opts+=(--target-colorspace-hint=yes --ao=pipewire --script="$dir/overlay.lua"
            --script-opts=overlay-file="$dir/overlay-pq.bgra") ;;
+app-hdr)        # the app itself (Flatpak) playing the HDR clip; extra args
+                # (e.g. --script ...) from ~/discnav-test/app-args
+    flatpak run --filesystem="$dir" \
+        --env=DISCPLAYER_MPV_LOG="$stamp.log" --env=QT_FORCE_STDERR_LOGGING=1 \
+        io.github.slaapliedje.DiscPlayer --fullscreen --play "$dir/motu-uhd-60s.mkv" \
+        $(cat "$dir/app-args" 2>/dev/null) >"$stamp.out" 2>&1
+    echo "exit $?" >>"$stamp.out"
+    exit ;;
 pass-pipewire)  # bitstream TrueHD/E-AC-3/AC-3 through PipeWire
     opts+=(--target-colorspace-hint=yes --ao=pipewire --audio-spdif=ac3,eac3,truehd) ;;
 pass-alsa)      # bitstream straight to the HDMI ALSA device, bypassing PipeWire

@@ -4,7 +4,7 @@ import DiscPlayer
 FocusScope {
     id: root
 
-    required property MpvItem mpv
+    required property Mpv mpv
     property bool active: false
     property var drive: null
     signal closed()
@@ -81,6 +81,7 @@ FocusScope {
         id: osd
         anchors.fill: parent
         opacity: 1
+        visible: opacity > 0 // hidden items stop re-rendering the UI layer
         Behavior on opacity { NumberAnimation { duration: 250 } }
 
         Rectangle {

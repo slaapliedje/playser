@@ -1,28 +1,30 @@
 import QtQuick
-import QtQuick.Window
 import DiscPlayer
 
-Window {
-    id: win
+// Root of the UI. It is rendered off-screen and composited by mpv over the
+// video (UiRenderer), so transparent areas show the video underneath.
+FocusScope {
+    id: root
 
-    property bool startFullscreen: false
+    required property Mpv mpv
 
-    width: 1280
-    height: 720
-    visible: true
-    visibility: startFullscreen ? Window.FullScreen : Window.Windowed
-    color: Theme.background
-    title: "Disc Player"
+    // --play: a file or URL without going through a drive
+    function playUrl(url) {
+        player.play({ url: url, label: url.split("/").pop() })
+    }
 
-    // scale the 10-foot UI with the window, from a 1080p design size
-    Binding { target: Theme; property: "scale"; value: Math.min(win.width / 1920, win.height / 1080) }
+    // scale the 10-foot UI from a 1080p design size
+    Binding { target: Theme; property: "scale"; value: Math.min(root.width / 1920, root.height / 1080) }
 
     DiscMonitor { id: discs }
 
-    MpvItem {
-        id: mpv
+    // Steam's Game Mode screensaver would otherwise cover the film
+    ScreenSaverInhibitor { inhibited: player.active && !root.mpv.paused }
+
+    Rectangle {
         anchors.fill: parent
-        visible: player.active
+        visible: !player.active
+        color: Theme.background
     }
 
     HomeScreen {
@@ -37,7 +39,7 @@ Window {
     PlayerScreen {
         id: player
         anchors.fill: parent
-        mpv: mpv
+        mpv: root.mpv
         onClosed: home.forceActiveFocus()
     }
 }

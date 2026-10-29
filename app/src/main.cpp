@@ -2,13 +2,16 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
-#include <QKeyEvent>
-#include <QQmlApplicationEngine>
+#include <QQmlComponent>
+#include <QQmlEngine>
+#include <QQuickItem>
 #include <QQuickWindow>
 #include <QTimer>
 #include <clocale>
 
 #include "Gamepad.h"
+#include "Mpv.h"
+#include "UiRenderer.h"
 
 // MakeMKV's libmmbd stands in for libaacs/libbdplus when it's installed
 // (see docs/spike-results.md, 0a). An explicit environment wins.
@@ -27,22 +30,23 @@ static void setupDecryption()
     }
 }
 
-static void sendKey(int key)
+// mpv key names (from its window) -> the Qt keys the QML UI handles
+static int qtKeyForMpv(const QString &name)
 {
-    QWindow *w = QGuiApplication::focusWindow();
-    if (!w && !QGuiApplication::topLevelWindows().isEmpty())
-        w = QGuiApplication::topLevelWindows().first();
-    if (!w)
-        return;
-    QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);
-    QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier);
-    QGuiApplication::sendEvent(w, &press);
-    QGuiApplication::sendEvent(w, &release);
+    static const QHash<QString, int> keys = {
+        { "UP", Qt::Key_Up }, { "DOWN", Qt::Key_Down }, { "LEFT", Qt::Key_Left },
+        { "RIGHT", Qt::Key_Right }, { "ENTER", Qt::Key_Return }, { "KP_ENTER", Qt::Key_Return },
+        { "ESC", Qt::Key_Escape }, { "BS", Qt::Key_Escape }, { "SPACE", Qt::Key_Space },
+        { "PGUP", Qt::Key_PageUp }, { "PGDWN", Qt::Key_PageDown }, { "MENU", Qt::Key_Menu },
+        { "i", Qt::Key_I }, { "m", Qt::Key_Menu },
+    };
+    return keys.value(name);
 }
 
 // --script "2,down,enter,3,shot,quit": numbers wait (seconds), names press
-// keys, "shot" saves a screenshot, "quit" exits. For headless UI tests.
-static void runScript(QQuickWindow *win, QStringList steps, const QString &shotDir, int shot = 0)
+// keys, "shot" saves the UI layer and an mpv window screenshot, "quit"
+// exits. For headless UI tests.
+static void runScript(UiRenderer *ui, Mpv *mpv, QStringList steps, const QString &shotDir, int shot = 0)
 {
     static const QHash<QString, int> keys = {
         { "up", Qt::Key_Up }, { "down", Qt::Key_Down }, { "left", Qt::Key_Left },
@@ -55,7 +59,7 @@ static void runScript(QQuickWindow *win, QStringList steps, const QString &shotD
         bool isNumber = false;
         const double secs = step.toDouble(&isNumber);
         if (isNumber) {
-            QTimer::singleShot(int(secs * 1000), win, [=] { runScript(win, steps, shotDir, shot); });
+            QTimer::singleShot(int(secs * 1000), ui, [=] { runScript(ui, mpv, steps, shotDir, shot); });
             return;
         }
         if (step == "quit") {
@@ -63,11 +67,12 @@ static void runScript(QQuickWindow *win, QStringList steps, const QString &shotD
             return;
         }
         if (step == "shot") {
-            const QString path = QDir(shotDir).filePath(QStringLiteral("shot-%1.png").arg(++shot, 2, 10, QChar('0')));
-            win->grabWindow().save(path);
-            qInfo("script: saved %s", qPrintable(path));
+            const QString base = QDir(shotDir).absoluteFilePath(QStringLiteral("shot-%1").arg(++shot, 2, 10, QChar('0')));
+            ui->lastFrame().save(base + "-ui.png");
+            mpv->screenshot(base + ".png"); // fails while idle (no video)
+            qInfo("script: saved %s", qPrintable(base));
         } else if (keys.contains(step)) {
-            sendKey(keys.value(step));
+            ui->deliverKey(keys.value(step));
         } else {
             qWarning("script: unknown step '%s'", qPrintable(step));
         }
@@ -77,7 +82,8 @@ static void runScript(QQuickWindow *win, QStringList steps, const QString &shotD
 int main(int argc, char *argv[])
 {
     setupDecryption();
-    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL); // libmpv render API
+    // the UI is rendered on the CPU into an mpv overlay (see UiRenderer)
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("discplayer");
@@ -90,24 +96,36 @@ int main(int argc, char *argv[])
         { "fullscreen", "Start fullscreen." },
         { "script", "Scripted input for tests.", "steps" },
         { "shot-dir", "Directory for script screenshots.", "dir", "." },
+        { "play", "Play a file or URL directly (testing without a drive).", "url" },
     });
     args.process(app);
 
+    Mpv mpv(args.isSet("fullscreen"));
+    QQmlEngine engine;
+    UiRenderer ui(&mpv);
+    QObject::connect(&mpv, &Mpv::closeRequested, &app, &QGuiApplication::quit);
+    QObject::connect(&mpv, &Mpv::keyPressed, &ui, [&ui](const QString &name) {
+        if (int key = qtKeyForMpv(name))
+            ui.deliverKey(key);
+    });
+
+    QQmlComponent component(&engine, "DiscPlayer", "Main");
+    QObject *root = component.createWithInitialProperties({ { "mpv", QVariant::fromValue(&mpv) } });
+    auto *rootItem = qobject_cast<QQuickItem *>(root);
+    if (!rootItem) {
+        qCritical("%s", qPrintable(component.errorString()));
+        return 1;
+    }
+    ui.setRootItem(rootItem);
+    if (args.isSet("play"))
+        QMetaObject::invokeMethod(rootItem, "playUrl", QVariant(args.value("play")));
+
     Gamepad gamepad;
-    QObject::connect(&gamepad, &Gamepad::keyPressed, &app, [](int key) { sendKey(key); });
+    QObject::connect(&gamepad, &Gamepad::keyPressed, &ui, &UiRenderer::deliverKey);
     gamepad.start();
 
-    QQmlApplicationEngine engine;
-    engine.setInitialProperties({ { "startFullscreen", args.isSet("fullscreen") } });
-    QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
-                     [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
-    engine.loadFromModule("DiscPlayer", "Main");
-
-    if (args.isSet("script") && !engine.rootObjects().isEmpty()) {
-        auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
-        if (win)
-            runScript(win, args.value("script").split(','), args.value("shot-dir"));
-    }
+    if (args.isSet("script"))
+        runScript(&ui, &mpv, args.value("script").split(','), args.value("shot-dir"));
 
     const int ret = app.exec();
     gamepad.requestInterruption();
