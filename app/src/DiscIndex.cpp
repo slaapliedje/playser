@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QMutex>
 #include <QtEndian>
+#include <QVariantList>
 #include <zlib.h>
 
 namespace {
@@ -103,4 +104,65 @@ QVariantMap DiscIndex::lookup(const QString &contentHash)
     }
     m.insert("items", items);
     return m;
+}
+
+QVariantList DiscIndex::playlists(const QString &discRoot)
+{
+    QVariantList result;
+    const QDir dir(QDir(discRoot).filePath("BDMV/PLAYLIST"));
+    QStringList names = dir.entryList({ "*.mpls", "*.MPLS" }, QDir::Files, QDir::Name);
+    for (const QString &name : names) {
+        QFile f(dir.filePath(name));
+        if (!f.open(QIODevice::ReadOnly) || f.size() > (1 << 20))
+            continue;
+        const QByteArray b = f.readAll();
+        const auto u16 = [&b](qsizetype at) { return at + 2 <= b.size() ? qFromBigEndian<quint16>(b.constData() + at) : 0; };
+        const auto u32 = [&b](qsizetype at) { return at + 4 <= b.size() ? qFromBigEndian<quint32>(b.constData() + at) : 0u; };
+        if (!b.startsWith("MPLS"))
+            continue;
+        // PlayList(): length(4) reserved(2) items(2) subpaths(2), then PlayItems
+        qsizetype at = u32(8);
+        const int items = u16(at + 6);
+        at += 10;
+        QStringList clips;
+        double seconds = 0;
+        for (int i = 0; i < items && at + 22 <= b.size(); i++) {
+            const int length = u16(at);
+            clips.append(QString::fromLatin1(b.mid(at + 2, 5)));
+            // IN_time/OUT_time in 45 kHz ticks
+            seconds += (double(u32(at + 18)) - double(u32(at + 14))) / 45000.0;
+            at += 2 + length;
+        }
+        result.append(QVariantMap{ { "name", name.toLower() }, { "seconds", qRound(seconds) }, { "clips", clips } });
+    }
+    return result;
+}
+
+void DiscIndex::resolvePlaylists(QVariantMap &disc, const QVariantList &playlists)
+{
+    QHash<QString, QString> playlistOfClip; // one-clip playlists only
+    for (const QVariant &v : playlists) {
+        const QVariantMap pl = v.toMap();
+        const QStringList clips = pl.value("clips").toStringList();
+        if (clips.size() == 1 && !playlistOfClip.contains(clips.first()))
+            playlistOfClip.insert(clips.first(), pl.value("name").toString());
+    }
+    QVariantList items = disc.value("items").toList();
+    QVariantList episodes;
+    for (QVariant &v : items) {
+        QVariantMap item = v.toMap();
+        const QString source = item.value("source").toString().toLower();
+        if (source.endsWith(".mpls"))
+            item.insert("playlist", source);
+        else if (source.endsWith(".m2ts") && playlistOfClip.contains(source.chopped(5)))
+            item.insert("playlist", playlistOfClip.value(source.chopped(5)));
+        v = item;
+        if (item.value("type") == "Episode" && item.contains("playlist"))
+            episodes.append(item);
+    }
+    std::sort(episodes.begin(), episodes.end(), [](const QVariant &a, const QVariant &b) {
+        return a.toMap().value("playlist").toString() < b.toMap().value("playlist").toString();
+    });
+    disc.insert("items", items);
+    disc.insert("episodes", episodes);
 }

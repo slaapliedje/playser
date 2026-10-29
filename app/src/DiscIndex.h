@@ -15,6 +15,16 @@ namespace DiscIndex {
 // the GUI thread.
 QString contentHash(const QString &discRoot);
 
+// Blu-ray playlists of a mounted disc (BDMV/PLAYLIST/*.mpls, which are not
+// encrypted): [{ name: "00061.mpls", seconds, clips: ["00011", ...] }],
+// sorted by name. Reads the disc: call it off the GUI thread.
+QVariantList playlists(const QString &discRoot);
+
+// Fills in item.playlist for catalogue items that name a clip ("00011.m2ts")
+// with the disc's one-clip playlist for it, since mpv selects playlists, and
+// adds `episodes`: the Episode items in playlist (disc) order.
+void resolvePlaylists(QVariantMap &disc, const QVariantList &playlists);
+
 // The catalogue entry for a hash, or an empty map:
 // { title, year, kind, release, format,
 //   main: "01199.mpls" (first MainMovie, if any),

@@ -31,6 +31,17 @@ app-hdr)        # the app itself (Flatpak) playing the HDR clip; extra args
         $(cat "$dir/app-args" 2>/dev/null) >"$stamp.out" 2>&1
     echo "exit $?" >>"$stamp.out"
     exit ;;
+app)            # the app (Flatpak) at its home screen, for disc tests
+    # test-only: MakeMKV copied from the desktop into $dir/makemkv (the real
+    # app will fetch it via extra-data); makemkvcon keeps state in ~/.MakeMKV
+    mk="$dir/makemkv"
+    [ -d "$mk" ] && set -- --filesystem="$mk":ro --filesystem=~/.MakeMKV:create \
+        --env=LD_LIBRARY_PATH=/app/lib:"$mk/lib" --env=MAKEMKVCON="$mk/bin/makemkvcon" \
+        --env=LIBAACS_PATH="$mk/lib/libmmbd.so.0" --env=LIBBDPLUS_PATH="$mk/lib/libmmbd.so.0"
+    flatpak run "$@" --env=DISCPLAYER_MPV_LOG="$stamp.log" --env=QT_FORCE_STDERR_LOGGING=1 \
+        io.github.slaapliedje.DiscPlayer --fullscreen $(cat "$dir/app-args" 2>/dev/null) >"$stamp.out" 2>&1
+    echo "exit $?" >>"$stamp.out"
+    exit ;;
 pass-pipewire)  # bitstream TrueHD/E-AC-3/AC-3 through PipeWire
     opts+=(--target-colorspace-hint=yes --ao=pipewire --audio-spdif=ac3,eac3,truehd) ;;
 pass-alsa)      # bitstream straight to the HDMI ALSA device, bypassing PipeWire

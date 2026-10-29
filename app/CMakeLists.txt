@@ -15,7 +15,7 @@ qt_standard_project_setup(REQUIRES 6.5)
 qt_add_executable(discplayer src/main.cpp)
 
 # must precede qt_add_qml_module, which reads it when generating qmldir
-set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Theme.qml qml/Resume.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(discplayer
     URI DiscPlayer
@@ -34,6 +34,8 @@ qt_add_qml_module(discplayer
         qml/PlayerScreen.qml
         qml/TrackPicker.qml
         qml/Theme.qml
+        qml/Resume.qml
+        qml/DiscScreen.qml
 )
 
 target_include_directories(discplayer PRIVATE src)

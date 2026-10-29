@@ -7,23 +7,44 @@ FocusScope {
     required property Mpv mpv
     property bool active: false
     property var drive: null
+    // what plays, in order: [{ url, title }] (several for a series' episodes);
+    // at the end of one entry the next starts
+    property var queue: []
+    property int index: 0
+    readonly property var entry: queue[index] || ({})
+    readonly property string resumeKey: drive ? (drive.contentHash || drive.label || "") : ""
     // the catalogue's title when the disc is known, else the volume label
     readonly property string displayTitle: !drive ? ""
         : drive.disc && drive.disc.title ? drive.disc.title : (drive.label || "")
+    // the episode's title for a series, else empty
+    readonly property string entryTitle: queue.length > 1 ? (entry.title || "") : ""
     // from play() until mpv has opened the title; a UHD takes ~20 s
     property bool opening: false
     signal closed()
 
-    function play(d) {
+    // q: the queue (default: the disc's own url); i: entry; start: seconds
+    function play(d, q, i, start) {
         drive = d
+        queue = q || [{ url: d.url, title: displayTitle }]
         active = true
-        opening = true
         forceActiveFocus()
-        mpv.load(d.url, d.options || {})
+        loadEntry(i || 0, start || 0)
+    }
+
+    function loadEntry(i, start) {
+        index = i
+        opening = true
+        mpv.load(entry.url, drive.options || {}, start)
         showOsd()
     }
 
+    function saveResume() {
+        if (!opening && root.mpv.duration > 0)
+            Resume.save(resumeKey, { index: index, position: Math.floor(root.mpv.position), title: entry.title || "" })
+    }
+
     function close() {
+        saveResume()
         mpv.stop()
         active = false
         opening = false
@@ -50,9 +71,25 @@ FocusScope {
             root.showOsd()
         }
         function onEndFile(reason) {
-            if (root.active && (reason === "eof" || reason === "error"))
+            if (!root.active)
+                return
+            if (reason === "eof" && root.index + 1 < root.queue.length) {
+                root.loadEntry(root.index + 1, 0)
+            } else if (reason === "eof") {
+                Resume.clear(root.resumeKey) // watched to the end
+                root.opening = true // keep close() from saving the final position
                 root.close()
+            } else if (reason === "error") {
+                root.close()
+            }
         }
+    }
+
+    Timer {
+        interval: 10000
+        repeat: true
+        running: root.active && !root.opening
+        onTriggered: root.saveResume()
     }
 
     Timer {
@@ -108,7 +145,7 @@ FocusScope {
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: root.displayTitle
+                text: root.entryTitle || root.displayTitle
                 color: Theme.textDim
                 font.pixelSize: Theme.fontMedium
             }
@@ -155,7 +192,8 @@ FocusScope {
 
             Text {
                 width: parent.width
-                text: root.displayTitle || root.mpv.mediaTitle
+                text: (root.displayTitle || root.mpv.mediaTitle)
+                      + (root.entryTitle ? "  ·  " + (root.index + 1) + ". " + root.entryTitle : "")
                 color: Theme.text
                 font.pixelSize: Theme.fontLarge
                 font.weight: Font.DemiBold

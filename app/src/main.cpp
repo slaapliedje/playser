@@ -87,6 +87,7 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("discplayer");
+    app.setOrganizationName("discplayer"); // settings: ~/.config/discplayer/
     // libmpv requires the C numeric locale; Qt sets the user's
     std::setlocale(LC_NUMERIC, "C");
 

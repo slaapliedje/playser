@@ -36,8 +36,9 @@ public:
     explicit Mpv(bool fullscreen, QObject *parent = nullptr);
     ~Mpv() override;
 
-    // Sets per-file options (e.g. bluray-device), then loads url.
-    Q_INVOKABLE void load(const QString &url, const QVariantMap &options = {});
+    // Sets options (e.g. bluray-device), then loads url, starting at
+    // `start` seconds if > 0 (a per-file option, so it doesn't stick).
+    Q_INVOKABLE void load(const QString &url, const QVariantMap &options = {}, double start = 0);
     Q_INVOKABLE void stop();
     Q_INVOKABLE void command(const QVariantList &args);
     Q_INVOKABLE void setMpvProperty(const QString &name, const QVariant &value);

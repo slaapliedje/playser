@@ -248,7 +248,9 @@ void DiscMonitor::identify(const QString &blockPath, const QString &mountPoint)
     QPointer<DiscMonitor> self(this);
     QThreadPool::globalInstance()->start([self, blockPath, mountPoint] {
         const QString hash = DiscIndex::contentHash(mountPoint);
-        const QVariantMap disc = hash.isEmpty() ? QVariantMap() : DiscIndex::lookup(hash);
+        QVariantMap disc = hash.isEmpty() ? QVariantMap() : DiscIndex::lookup(hash);
+        if (!disc.isEmpty())
+            DiscIndex::resolvePlaylists(disc, DiscIndex::playlists(mountPoint));
         QMetaObject::invokeMethod(self, [self, blockPath, mountPoint, hash, disc] {
             if (!self)
                 return;

@@ -33,7 +33,27 @@ FocusScope {
         visible: !player.active
         monitor: discs
         focus: !player.active
-        onPlayRequested: drive => player.play(drive)
+        onPlayRequested: drive => {
+            const episodes = drive.disc && drive.disc.episodes ? drive.disc.episodes : []
+            if (episodes.length > 1 || Resume.get(drive.contentHash || drive.label))
+                discScreen.open(drive)
+            else
+                player.play(drive)
+        }
+    }
+
+    DiscScreen {
+        id: discScreen
+        anchors.fill: parent
+        onPlayRequested: (index, start) => {
+            const d = drive
+            const episodes = d.disc && d.disc.episodes ? d.disc.episodes : []
+            visible = false
+            player.play(d, episodes.length > 1
+                ? episodes.map(e => ({ url: "bd://mpls/" + parseInt(e.playlist), title: e.title }))
+                : null, index, start)
+        }
+        onClosed: home.forceActiveFocus()
     }
 
     PlayerScreen {

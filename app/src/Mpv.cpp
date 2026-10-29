@@ -171,11 +171,14 @@ Mpv::~Mpv()
     mpv_terminate_destroy(m_mpv);
 }
 
-void Mpv::load(const QString &url, const QVariantMap &options)
+void Mpv::load(const QString &url, const QVariantMap &options, double start)
 {
     for (auto it = options.cbegin(); it != options.cend(); ++it)
         setMpvProperty(it.key(), it.value());
-    command({ "loadfile", url });
+    if (start > 0)
+        command({ "loadfile", url, "replace", -1, QStringLiteral("start=%1").arg(start, 0, 'f', 1) });
+    else
+        command({ "loadfile", url });
 }
 
 void Mpv::stop()

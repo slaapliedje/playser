@@ -187,6 +187,20 @@ Status (2026-10-28), `app/`:
   heuristic (longest playlist whose clips aren't mostly shared with
   others, chapter count, MakeMKV-style FPL detection), and offer to
   contribute the disc.
+- ✅ **Series discs and resume** (2026-10-29): Blu-ray playlists are read
+  from the mounted disc (unencrypted `.mpls`), catalogue clips are mapped
+  to their one-clip playlists, and episodes listed in disc order
+  (`DiscScreen`: Resume / Play all / episodes; films with a saved position
+  get Resume / Play from the beginning). The player takes a queue and
+  continues to the next episode; position is saved every 10 s and on stop
+  per disc (`Resume`, `~/.config/discplayer/`), cleared after the last
+  item ends. Verified: the *Looney Tunes Collector's Choice Vol. 1*
+  Blu-ray lists its 19 cartoons on the box; film resume on the desktop
+  (`start=` honoured). Each episode reopens the disc (libbluray + AACS
+  init), so Play all has a gap between episodes until libdiscnav keeps
+  the disc open (Phase 3).
+- ⬜ Bundle a UI font: the Flatpak's runtime fonts lack the circled button
+  letters (Ⓐ Ⓑ) used in hints; better still, SDL3 gamepad-type glyphs.
 - ⬜ UHD vs Blu-ray detection; audio-output failure → PCM fallback.
 - ⬜ First-run MakeMKV setup and LibreDrive check.
 - 🔶 Flatpak manifest `flatpak/io.github.slaapliedje.DiscPlayer.yml`
