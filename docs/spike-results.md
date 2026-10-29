@@ -222,6 +222,29 @@ encoded stream" from "HBR TrueHD"; run WirePlumber with debug logging
 during a failing attempt; compare a host-side (non-Flatpak) client to
 rule out Flatpak/portal access rules on encoded nodes.
 
+**Update 2026-10-29: passthrough works, with the dummy stream moved.**
+Box now connected straight to the VSX-1130 over HDMI (ELD: 8ch LPCM to
+192 kHz, AC-3, E-AC-3, DTS, DTS-HD, TrueHD; EDID passes 4K60 + HDR10/PQ).
+- Our Flatpak's FFmpeg had `--disable-muxers`, which drops the `spdif`
+  muxer mpv's `spdif_*` "decoders" need: passthrough never even opened an
+  AO. Fixed (`--enable-muxer=spdif`).
+- Then `no target node available` again, from both `ao=pipewire` and
+  `ao=pulse`. WirePlumber debug log (`wpctl set-log-level 5`): the target
+  is picked correctly (`hdmi-surround71-extra3`, `can_passthrough:true`),
+  then `prepare-link.lua: target is already linked, cannot link
+  exclusively`. Passthrough needs the sink to itself, and the only other
+  link was `speech-dispatcher-dummy`.
+- With `speech-dispatcher-dummy` moved to another sink (`pactl
+  move-sink-input`), AC-3 (48 kHz 2ch) and TrueHD (192 kHz 8ch HBR) both
+  played to the end; the receiver showed DOLBY DIGITAL and Dolby TrueHD.
+  No `clock.allowed-rates` change was needed. (The 0c attempt that also
+  moved the dummy stream still lacked the `spdif` muxer.)
+- Flatpak clients get WirePlumber's `steamos-restricted` access, so the
+  app can't move another client's stream itself. Games never need this
+  (they output mixed PCM), so Steam has no passthrough API.
+- Watchdog check: before the fix, both clips stalled and recovered to
+  decoded PCM after ~8 s (the receiver showed PCM).
+
 Box state after testing (reverted 2026-10-28): `clock.allowed-rates` back
 to `[48000]`; `speech-dispatcher-dummy` back on the HDMI sink; HDMI card
 profile set to `hdmi-surround-extra3` (5.1, matching the user's speakers)

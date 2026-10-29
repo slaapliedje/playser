@@ -120,7 +120,7 @@ all UHD discs).
   button graphics (`libdiscnav/spu.c`) and VM-driven track selection.
 - **0c. ✅ / ⚠️** SteamOS box: 4K HDR10 from a Flatpak under gamescope,
   VAAPI decode and decoded multichannel PCM all work. **Bitstream
-  passthrough through PipeWire does not** (unresolved; see results).
+  passthrough through PipeWire does not** (solved 2026-10-29: see below).
 
 Decisions from Phase 0:
 - **Audio:** decoded PCM (up to 7.1) is the default. Passthrough is a later,
@@ -218,6 +218,15 @@ Status (2026-10-28), `app/`:
   plays to the end; no false trigger in normal playback. The demuxer
   buffer can't tell a slow disc read from a stall (it reads 0 in both),
   so a long disc stall may also trip the first, harmless steps.
+- ✅ **Passthrough works on SteamOS** (2026-10-29, spike-results 0c
+  update): needed the `spdif` muxer in our FFmpeg, and exclusive use of
+  the HDMI sink, which SteamOS's `speech-dispatcher-dummy` stream blocks
+  ("cannot link exclusively"). Verified with the box wired straight to the
+  VSX-1130: Dolby Digital and Dolby TrueHD shown on the receiver.
+- ⬜ Passthrough as an opt-in setting: a one-time WirePlumber rule keeping
+  `speech-dispatcher-dummy` off HDMI, offered on the setup screen like the
+  `sg` fix; check whether Steam's own UI-sound stream also takes the sink
+  during playback. Add the dummy-stream blocker to the SteamOS issue.
 - ⬜ UHD vs Blu-ray detection (LibreDrive check on the setup screen).
 - ✅ **An installed MakeMKV Flatpak is preferred** (2026-10-29): the
   manifest grants read access to `com.makemkv.MakeMKV`'s install folder
