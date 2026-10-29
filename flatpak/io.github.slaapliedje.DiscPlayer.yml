@@ -28,6 +28,7 @@ finish-args:
   # it HDR swapchains fail ("Hooking has failed somewhere!")
   - --filesystem=xdg-run/gamescope-0
   - --env=LC_NUMERIC=C
+  - --filesystem=~/.MakeMKV:create         # MakeMKV's key and data (user's own)
 
 cleanup:
   - '*.la'
@@ -82,6 +83,40 @@ modules:
         url: https://github.com/libass/libass.git
         tag: 0.17.5
         commit: 4a05d8127f525943ebf45fdc6497c9e665947f0d
+
+  # MakeMKV, for Blu-ray/UHD decryption through libmmbd (libbluray loads it
+  # as libaacs/libbdplus; it drives makemkvcon). Users supply their own key,
+  # kept in ~/.MakeMKV. Modules follow Flathub's com.makemkv.MakeMKV.
+  # Built before our FFmpeg module: makemkv-oss 2.0.0 doesn't compile against
+  # FFmpeg 9, so it uses the runtime's FFmpeg (libavcodec.so.61) instead.
+  - name: makemkv-oss         # LGPL: libmmbd, libmakemkv, libdriveio
+    buildsystem: autotools
+    build-options:
+      cflags: -D__GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -D __STDC_FORMAT_MACROS
+    config-opts:
+      - --disable-gui
+    make-install-args:
+      - DESTDIR=/             # avoids its ldconfig call
+    post-install:
+      - install -Dp -m 644 License.txt /app/share/licenses/discplayer/makemkv-oss-License.txt
+    sources:
+      - type: archive
+        url: https://www.makemkv.com/download/makemkv-oss-2.0.0.tar.gz
+        sha256: 435316b2d219eb48c880526557addd076b5f5e6de5171424c7651f9cac95b161
+
+  # proprietary makemkvcon; the author allows redistribution as long as the
+  # EULA is referenced (Flathub precedent: com.makemkv.MakeMKV)
+  - name: makemkv-bin
+    buildsystem: simple
+    build-commands:
+      - mkdir -p tmp
+      - echo accepted > tmp/eula_accepted
+      - make install DESTDIR=/ PREFIX=/app
+      - install -Dp -m 644 src/eula_en_linux.txt /app/share/licenses/discplayer/makemkv-eula.txt
+    sources:
+      - type: archive
+        url: https://www.makemkv.com/download/makemkv-bin-2.0.0.tar.gz
+        sha256: f1265e74875a186efdfbbbec7459a64e969033515e53cbc4d805f0a374f0a124
 
   - name: ffmpeg
     cleanup:

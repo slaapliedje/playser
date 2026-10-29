@@ -25,6 +25,10 @@ static void setupDecryption()
                 qputenv("LIBAACS_PATH", "libmmbd");
             if (!qEnvironmentVariableIsSet("LIBBDPLUS_PATH"))
                 qputenv("LIBBDPLUS_PATH", "libmmbd");
+            // libmmbd only looks for its helper in /usr/bin and
+            // /usr/local/bin; in the Flatpak it lives in /app/bin
+            if (!qEnvironmentVariableIsSet("MAKEMKVCON") && QFileInfo::exists("/app/bin/makemkvcon"))
+                qputenv("MAKEMKVCON", "/app/bin/makemkvcon");
             return;
         }
     }
