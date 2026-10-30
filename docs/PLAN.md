@@ -156,8 +156,6 @@ Status (2026-10-28), `app/`:
   - ⬜ Known: on SDR displays, PQ overlays get mpv's black-point lift (dark
     panels ~21→41); matters for HDR content on a Deck LCD.
 - ⬜ Real controller test (Steam Input on the box, Legion Go 2).
-- ⬜ "Opening disc…" state: a UHD takes ~22 s to open (spin-up + MakeMKV
-  + 55 playlists) and currently shows black.
 - ✅ "Opening disc…" screen while mpv opens the title; B cancels (the UI
   returns at once; libbluray's open can't be interrupted and ends ~13 s
   later, so end-file events are matched to the current playlist entry).
@@ -201,7 +199,7 @@ Status (2026-10-28), `app/`:
   Blu-ray lists its 19 cartoons on the box; film resume on the desktop
   (`start=` honoured). Each episode reopens the disc (libbluray + AACS
   init), so Play all has a gap between episodes until libdiscnav keeps
-  the disc open (Phase 3).
+  the disc open (Phase 3, Blu-ray navigation).
 - ✅ **UI font and controller glyphs** (2026-10-29): Inter 4.1 (OFL,
   variable) is embedded as a Qt resource, so the box (whose runtime only
   has DejaVu Sans) and desktops look the same. Button hints are drawn
@@ -308,14 +306,72 @@ Status (2026-10-28), `app/`:
   installed on the box's shortcut and shown on Steam's home row.
   Needs: libmmbd from the user's MakeMKV inside the sandbox.
 
+Order (proposed 2026-10-29): finish Phase 1, then DVD menus, then BD-J
+before HDMV, because both Blu-ray test discs (*Back to the Future*,
+*Masters of the Universe*) and nearly all UHDs use BD-J menus (`BDMV/JAR`,
+`BDJO`); HDMV waits for an HDMV disc (early Blu-rays, ~2006–2008). GitHub
+releases (Phase 6) can start any time after Phase 1; they don't wait for
+the phases in between.
+
 ### Phase 2 — libdiscnav: DVD menus
-Own repo/library from day one; integrate into the app.
+Own repo/library from day one (LGPL); integrate into the app. Spike 0b
+already plays *Airheads*' menus end to end.
+- Library API out of the spike: open, controller input (up/down/left/
+  right/select/menu/title), events (title change, still, highlight,
+  audio/subtitle stream), menu graphics as bitmaps; libmpv via `stream_cb`
+  (`discnav://`).
+- App: Play opens the disc's menu (setting: "Go straight to the movie");
+  d-pad moves, A selects, Menu button opens the disc menu, View opens the
+  title menu. Highlights through a second mpv overlay above the video,
+  below the UI.
+- Tests: synthetic DVD fixtures (`build/fixtures`) driven by scripted
+  input, compared by screenshots.
 
-### Phase 3 — libdiscnav: Blu-ray HDMV menus
+### Phase 3 — Blu-ray navigation and BD-J menus (UHD too)
+- Blu-ray navigation mode: libbluray's `bd_play()` + `bd_read_ext()`
+  events through `stream_cb` instead of mpv's `bd://`. Keeps the disc open
+  (fixes the Play all gap) and is the base for HDMV menus in Phase 4.
+- BD-J: bundle a JRE in the Flatpak (OpenJDK SDK extension; ~50 MB) and
+  libbluray's `libbluray.jar`. BD-J draws ARGB frames → mpv overlay,
+  re-encoded to PQ for UHD (as the UI layer, spike 0d). No BD-Live
+  (network) and per-disc persistent storage under the app's data dir.
+- Fallback: if the menu doesn't start or stalls, say so and play the main
+  feature (TheDiscDB/heuristic), as now.
+- Risk: libbluray's BD-J works on many discs, not all; keep a list of
+  tested discs.
 
-### Phase 4 — BD-J (bundled JVM), UHD menus
+### Phase 4 — Blu-ray HDMV menus
+libbluray runs the HDMV VM and decodes the IG menus; pass its overlays to
+mpv, plus pop-up menus during playback. Needs an HDMV test disc.
 
-### Phase 5 — Distribution
+### Phase 5 — 3D (Blu-ray 3D and side-by-side files)
+Requested by a user. Test gear: passive and active 3D glasses, VR
+headsets, VITURE XR glasses.
+- **Decoding:** 3D Blu-rays carry the second eye as H.264 MVC
+  (`BDMV/STREAM/SSIF`, the dependent view in its own stream). FFmpeg (and
+  so mpv) doesn't decode MVC (FFmpeg trac #3009, open as of 2025).
+  Candidate: **edge264** (software H.264 decoder with MVC; used by
+  LibreELEC's 3D builds, draft VLC MR !6630). Spike first: decode a 3D
+  Blu-ray's MVC to both views on the box and the Deck at full frame rate,
+  and check edge264's licence. Integrate as an FFmpeg decoder in our
+  Flatpak build that outputs both eyes as one full side-by-side frame;
+  libbluray must deliver the SS playlist's dependent-view stream too.
+- **Output modes** (per display, remembered): 2D (left eye only, the
+  default), half side-by-side and half top-and-bottom for 3D TVs and
+  projectors (the TV is set to the matching 3D mode; works with passive
+  and active glasses), full side-by-side 3840×1080 for VITURE and similar
+  glasses in their 3D mode, and anaglyph. HDMI 1.4 frame packing
+  (1920×2205) needs a stereo display mode that gamescope doesn't offer:
+  out of scope unless that changes.
+- **UI, subtitles and menus in 3D:** the UI overlay and subtitles are drawn
+  once per eye (subtitles at the disc's depth offsets where given, else a
+  fixed one); disc menus show in both eyes.
+- **Files:** side-by-side / top-and-bottom MKVs (mpv `stereo-mode`, or
+  chosen by hand) use the same output modes; NAS sources too (Phase 7).
+- **VR headsets** (stretch): a virtual cinema screen through OpenXR
+  (SteamVR / Monado), separate from the output modes above.
+
+### Phase 6 — Distribution
 Flatpak on GitHub releases, Steam artwork (drawn, see Phase 1) + Steam Input template, then
 Flathub submission.
 
@@ -343,12 +399,24 @@ Input (applies now, whatever the channel):
   SDL3 as the base and route everything through an input interface, so a
   Steam Input API backend can be added later.
 - Ship a recommended Steam Input layout for the non-Steam shortcut
-  (Phase 5, alongside the library art), so users remap the usual Steam way
+  (Phase 6, alongside the library art), so users remap the usual Steam way
   and extra buttons (back paddles, Go 2 buttons) can be bound without code.
 - On-screen button hints use SDL3's gamepad type (Xbox, PlayStation,
   Nintendo, Steam Deck) to pick the right glyphs instead of fixed letters.
 
-### Phase 6 — Plex, then Jellyfin
+### Phase 7 — Plex, then Jellyfin
+- Sign-in by on-screen code (plex.tv PIN link; Jellyfin Quick Connect),
+  never typing on a controller.
+- Library pages with posters, Continue Watching, search with the Steam
+  on-screen keyboard; direct play through mpv; report progress back so
+  resume follows the user between devices.
+
+### Not yet in a phase
+- Settings screen (beyond Setup): output modes, passthrough, menus on/off,
+  subtitles default.
+- Handheld layout (Deck 1280×800, Legion Go 2) and docked/undocked change.
+- Sleep and wake in Game Mode mid-film; eject from the controller; error
+  screens for unreadable discs.
 
 ## Repo layout
 
