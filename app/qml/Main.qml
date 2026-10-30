@@ -27,21 +27,17 @@ FocusScope {
         property bool setupSeen: false
         // send Dolby/DTS to the receiver undecoded (setup screen)
         property bool passthrough: false
-        onPassthroughChanged: root.applyAudio()
     }
 
-    // codecs mpv passes through when on; one the receiver can't take fails
-    // to open and the audio watchdog (Mpv) falls back to decoding
-    function applyAudio() {
-        mpv.setMpvProperty("audio-spdif", settings.passthrough ? "ac3,eac3,dts-hd,truehd" : "")
-    }
+    // codecs sent undecoded when on; one the receiver can't take fails to
+    // open and Mpv's audio watchdog falls back to decoding
+    Binding { target: root.mpv; property: "passthrough"; value: settings.passthrough ? "ac3,eac3,dts-hd,truehd" : "" }
 
     function showSetup() {
         setup.open()
     }
 
     Component.onCompleted: {
-        applyAudio()
         // first run, or something Blu-ray playback needs went missing
         if (!settings.setupSeen || (system.opticalDrives > 0 && !system.ready))
             showSetup()

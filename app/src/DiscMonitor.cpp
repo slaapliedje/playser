@@ -249,9 +249,17 @@ void DiscMonitor::identify(const QString &blockPath, const QString &mountPoint)
     QThreadPool::globalInstance()->start([self, blockPath, mountPoint] {
         const QString hash = DiscIndex::contentHash(mountPoint);
         QVariantMap disc = hash.isEmpty() ? QVariantMap() : DiscIndex::lookup(hash);
-        if (!disc.isEmpty())
+        const bool known = !disc.isEmpty();
+        if (known)
             DiscIndex::resolvePlaylists(disc, DiscIndex::playlists(mountPoint));
-        QMetaObject::invokeMethod(self, [self, blockPath, mountPoint, hash, disc] {
+        // not in the catalogue: the title the disc gives itself (Blu-ray);
+        // its art either way
+        const QVariantMap meta = DiscIndex::discMeta(mountPoint);
+        if (!known && meta.contains("title"))
+            disc.insert("title", meta.value("title"));
+        if (meta.contains("art"))
+            disc.insert("art", meta.value("art"));
+        QMetaObject::invokeMethod(self, [self, blockPath, mountPoint, hash, disc, known] {
             if (!self)
                 return;
             Identity &id = self->m_identities[blockPath];
@@ -260,8 +268,11 @@ void DiscMonitor::identify(const QString &blockPath, const QString &mountPoint)
             id.pending = false;
             id.contentHash = hash;
             id.disc = disc;
-            qInfo("disc %s: %s %s", qPrintable(mountPoint), qPrintable(hash),
-                  disc.isEmpty() ? "(not in index)" : qPrintable(disc.value("title").toString()));
+            const QString title = disc.value("title").toString();
+            const QString what = known ? title
+                : title.isEmpty() ? QStringLiteral("(not in index)")
+                                  : QStringLiteral("(not in index; disc says \"%1\")").arg(title);
+            qInfo("disc %s: %s %s", qPrintable(mountPoint), qPrintable(hash), qPrintable(what));
             self->refresh();
         });
     });

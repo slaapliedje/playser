@@ -63,7 +63,7 @@ FocusScope {
         spacing: Theme.spacing * 0.4
         Text {
             width: parent.width
-            text: root.disc.title || (root.drive ? root.drive.label : "")
+            text: root.disc.title || (root.drive ? Theme.titleFromLabel(root.drive.label) : "")
             color: Theme.text
             font.pixelSize: Theme.fontHuge
             font.weight: Font.DemiBold

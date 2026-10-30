@@ -32,4 +32,10 @@ void resolvePlaylists(QVariantMap &disc, const QVariantList &playlists);
 // Thread-safe; the index is loaded on first use.
 QVariantMap lookup(const QString &contentHash);
 
+// What a Blu-ray says about itself (BDMV/META/DL/bdmt_<lang>.xml, the
+// "disc library" metadata, English preferred): { title, art } where art is
+// the path of its largest thumbnail; either may be missing, and DVDs have
+// neither. Reads the disc: call it off the GUI thread.
+QVariantMap discMeta(const QString &discRoot);
+
 } // namespace DiscIndex

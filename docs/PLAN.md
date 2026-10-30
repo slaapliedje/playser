@@ -167,8 +167,11 @@ Status (2026-10-28), `app/`:
   (`app/data/discdb-index.json.gz`, 5,557 discs, 950 KiB; rebuild with
   `tools/build-discdb-index.py`). Known Blu-rays play their main playlist
   (`bd://mpls/1199`) and show title/release/"4K UHD". Verified with both
-  discs. Still to do: DVD main title (records name VTS numbers, match by
-  duration), an Extras screen, the unknown-disc heuristic, and a
+  discs. Unknown discs (2026-10-29): the title comes from the Blu-ray's
+  `BDMV/META/DL/bdmt_*.xml` (`di:name`), else the volume label tidied
+  (`BACK_TO_FUTURE_1` → "Back To Future 1"), and the largest thumbnail
+  there is the drive card's art (verified: *Back to the Future*). Still to do: DVD main title (records name VTS numbers, match by
+  duration), an Extras screen, and a
   libudfread reader so discs needn't be mounted. Original notes: (https://thediscdb.com, data repo
   `TheDiscDb/data`, MIT; ~6,150 discs as of 2026-10-29). Each disc record
   has a `ContentHash` and labels playlists `MainMovie` / `Extra` /
@@ -240,10 +243,13 @@ Status (2026-10-28), `app/`:
   *Back to the Future* (Blu-ray, not in TheDiscDB; libbluray picked the
   1:56:05 main title) played its DTS-HD MA 5.1 as bitstream: the VSX-1130
   showed DTS-HD MSTR with L C R SL SR LFE.
-- ⬜ Steam's UI audio (`steamwebhelper`, "Chromium") holds the sink for
-  ~18 s after any Steam sound, which blocks passthrough in that window;
-  retry passthrough once after a short wait before falling back to
-  decoding. Add the dummy-stream blocker to the SteamOS issue.
+- ✅ **Busy output retry** (2026-10-29): Steam's UI audio
+  (`steamwebhelper`, "Chromium") holds the sink for ~18 s after any Steam
+  sound. When mpv's PipeWire output logs "no target node", Mpv decodes at
+  once, then tries passthrough again after 20 s; a second failure leaves it
+  decoded with a notice. Verified on the box with a paplay stand-in on HDMI
+  removed after 14 s: PCM at 0.2 s, `spdif-truehd` from 20.3 s.
+- ⬜ Add the dummy-stream blocker to the SteamOS issue.
 - ⬜ UHD vs Blu-ray detection (LibreDrive check on the setup screen).
 - ✅ **An installed MakeMKV Flatpak is preferred** (2026-10-29): the
   manifest grants read access to `com.makemkv.MakeMKV`'s install folder

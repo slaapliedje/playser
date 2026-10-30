@@ -29,6 +29,9 @@ class Mpv : public QObject
     Q_PROPERTY(int chapter READ chapter NOTIFY chapterChanged)
     Q_PROPERTY(QVariantList chapters READ chapters NOTIFY chaptersChanged)
     Q_PROPERTY(QVariantList tracks READ tracks NOTIFY tracksChanged)
+    // codecs to send to the receiver undecoded (mpv audio-spdif), e.g.
+    // "ac3,truehd"; empty decodes everything
+    Q_PROPERTY(QString passthrough READ passthrough WRITE setPassthrough NOTIFY passthroughChanged)
 
 public:
     // Transfer function the video (and so every overlay) is encoded with.
@@ -58,6 +61,8 @@ public:
     QString mediaTitle() const { return m_mediaTitle; }
     int chapter() const { return m_chapter; }
     QVariantList chapters() const { return m_chapters; }
+    QString passthrough() const { return m_passthrough; }
+    void setPassthrough(const QString &codecs);
     QVariantList tracks() const { return m_tracks; }
     QSize osdSize() const { return m_osdSize; }
     Transfer transfer() const { return m_transfer; }
@@ -71,6 +76,7 @@ signals:
     void chapterChanged();
     void chaptersChanged();
     void tracksChanged();
+    void passthroughChanged();
     void osdSizeChanged();
     void transferChanged();
     void fileLoaded();
@@ -95,6 +101,8 @@ private:
     };
     void sendOverlay(int id, const QImage &image);
     void checkAudioStall();
+    void applySpdif(bool on);
+    void onAudioOutputBusy();
     void commandAsync(const QVariantList &args, quint64 replyId = 0);
 
     mpv_handle *m_mpv = nullptr;
@@ -124,4 +132,12 @@ private:
     double m_lastPosition = -1;
     int m_stalledSecs = 0;
     int m_recovery = 0; // steps taken for this file
+
+    // passthrough: off for the session once it stalled; while the output is
+    // busy (another stream on it, e.g. Steam's UI sounds for ~18 s after one
+    // plays) decoded now and retried once later in the file
+    QString m_passthrough;
+    bool m_passthroughFailed = false;
+    bool m_outputBusy = false;
+    bool m_busyRetried = false;
 };

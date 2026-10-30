@@ -3,12 +3,15 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMutex>
+#include <QRegularExpression>
 #include <QtEndian>
 #include <QVariantList>
+#include <QXmlStreamReader>
 #include <zlib.h>
 
 namespace {
@@ -165,4 +168,36 @@ void DiscIndex::resolvePlaylists(QVariantMap &disc, const QVariantList &playlist
     });
     disc.insert("items", items);
     disc.insert("episodes", episodes);
+}
+
+QVariantMap DiscIndex::discMeta(const QString &discRoot)
+{
+    const QDir dir(QDir(discRoot).filePath("BDMV/META/DL"));
+    QStringList files = dir.entryList({ "bdmt_*.xml", "BDMT_*.XML" }, QDir::Files);
+    if (files.isEmpty())
+        return {};
+    const int english = files.indexOf(QRegularExpression("bdmt_eng\\.xml", QRegularExpression::CaseInsensitiveOption));
+    QFile file(dir.filePath(files.value(qMax(0, english))));
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+
+    QVariantMap meta;
+    qint64 artSize = 0;
+    QXmlStreamReader xml(&file);
+    while (!xml.atEnd()) {
+        if (xml.readNext() != QXmlStreamReader::StartElement)
+            continue;
+        if (xml.name() == u"name" && !meta.contains("title")) {
+            const QString title = xml.readElementText().simplified();
+            if (!title.isEmpty())
+                meta.insert("title", title);
+        } else if (xml.name() == u"thumbnail") {
+            const QFileInfo art(dir.filePath(xml.attributes().value("href").toString()));
+            if (art.isFile() && art.size() > artSize) {
+                artSize = art.size();
+                meta.insert("art", art.filePath());
+            }
+        }
+    }
+    return meta;
 }

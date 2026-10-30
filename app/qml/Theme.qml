@@ -24,6 +24,14 @@ QtObject {
     readonly property int spacing: 24 * scale
     readonly property int radius: 18 * scale
 
+    // a disc's volume label as a title: "BACK_TO_FUTURE_1" -> "Back To Future 1"
+    function titleFromLabel(label) {
+        let t = String(label || "").replace(/_/g, " ").replace(/\s+/g, " ").trim()
+        if (t === t.toUpperCase())
+            t = t.toLowerCase().replace(/(^|\s)(\S)/g, (m, sp, c) => sp + c.toUpperCase())
+        return t
+    }
+
     function formatTime(secs) {
         if (!isFinite(secs) || secs < 0)
             secs = 0

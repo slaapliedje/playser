@@ -15,7 +15,7 @@ FocusScope {
     readonly property string resumeKey: drive ? (drive.contentHash || drive.label || "") : ""
     // the catalogue's title when the disc is known, else the volume label
     readonly property string displayTitle: !drive ? ""
-        : drive.disc && drive.disc.title ? drive.disc.title : (drive.label || "")
+        : drive.disc && drive.disc.title ? drive.disc.title : Theme.titleFromLabel(drive.label)
     // the episode's title for a series, else empty
     readonly property string entryTitle: queue.length > 1 ? (entry.title || "") : ""
     // from play() until mpv has opened the title; a UHD takes ~20 s

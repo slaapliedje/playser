@@ -91,6 +91,35 @@ FocusScope {
         scale: focused ? 1.04 : 1.0
         Behavior on scale { NumberAnimation { duration: 120 } }
 
+        // the disc's own art (Blu-ray metadata), darkened behind the text;
+        // a Canvas because the software renderer can't clip to round corners
+        Canvas {
+            id: art
+            readonly property string source: drive.hasMedia && disc.art ? "file://" + encodeURI(disc.art) : ""
+            anchors { fill: parent; margins: parent.border.width }
+            visible: source !== ""
+            onSourceChanged: if (source) loadImage(source); else requestPaint()
+            onImageLoaded: requestPaint()
+            onPaint: {
+                const ctx = getContext("2d")
+                ctx.reset()
+                if (!source || !isImageLoaded(source))
+                    return
+                const r = Theme.radius - parent.border.width
+                ctx.beginPath()
+                ctx.roundedRect(0, 0, width, height, r, r)
+                ctx.clip()
+                ctx.drawImage(source, 0, 0, width, height)
+                const shade = ctx.createLinearGradient(0, 0, width, 0)
+                shade.addColorStop(0, Qt.rgba(0.04, 0.06, 0.09, 0.92))
+                shade.addColorStop(0.6, Qt.rgba(0.04, 0.06, 0.09, 0.75))
+                shade.addColorStop(1, Qt.rgba(0.04, 0.06, 0.09, 0.35))
+                ctx.fillStyle = shade
+                ctx.fillRect(0, 0, width, height)
+            }
+            onWidthChanged: requestPaint()
+        }
+
         Column {
             anchors { fill: parent; margins: Theme.spacing * 1.5 }
             spacing: Theme.spacing * 0.6
@@ -113,7 +142,7 @@ FocusScope {
                 width: parent.width
                 text: !drive.hasMedia ? "Insert a disc"
                       : known ? disc.title
-                      : (drive.label || "Untitled disc")
+                      : (Theme.titleFromLabel(drive.label) || "Untitled disc")
                 color: drive.hasMedia ? Theme.text : Theme.textDim
                 font.pixelSize: Theme.fontLarge
                 font.weight: Font.DemiBold

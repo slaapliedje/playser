@@ -1,6 +1,7 @@
 #include "Mpv.h"
 
 #include <cmath>
+#include <cstring>
 #include <mpv/client.h>
 
 namespace {
@@ -10,6 +11,10 @@ enum PropId : uint64_t {
     PropChapterList, PropTrackList, PropOsdDimensions, PropVideoParams,
     PropSeeking, PropPausedForCache, PropAudioId, PropSpdif,
 };
+
+// passthrough found the audio output in use: retry after this long, by when
+// Steam has closed its UI-sound stream
+constexpr int kBusyRetryMs = 20000;
 
 // the clock standing still this long while playing is an audio stall;
 // longer while (re)starting playback, as a disc seek can be slow
@@ -159,6 +164,8 @@ Mpv::Mpv(bool fullscreen, const QStringList &options, QObject *parent) : QObject
     }
     if (mpv_initialize(m_mpv) < 0)
         qFatal("mpv_initialize failed");
+    // "no target node available": the audio output is busy (onAudioOutputBusy)
+    mpv_request_log_messages(m_mpv, "warn");
 
     for (const char *key : kForwardedKeys)
         commandAsync({ "keybind", key, QStringLiteral("script-message dp-key %1").arg(key) });
@@ -265,6 +272,46 @@ void Mpv::sendOverlay(int id, const QImage &image)
                  slot.inFlight);
 }
 
+void Mpv::setPassthrough(const QString &codecs)
+{
+    if (codecs == m_passthrough)
+        return;
+    m_passthrough = codecs;
+    m_passthroughFailed = false;
+    applySpdif(true);
+    emit passthroughChanged();
+}
+
+void Mpv::applySpdif(bool on)
+{
+    setMpvProperty("audio-spdif", on && !m_passthroughFailed ? m_passthrough : QString());
+}
+
+void Mpv::onAudioOutputBusy()
+{
+    if (m_spdif.isEmpty() || m_outputBusy)
+        return;
+    m_outputBusy = true;
+    // decode now rather than wait, frozen, for the output
+    applySpdif(false);
+    command({ "ao-reload" });
+    if (m_busyRetried) {
+        qWarning("audio: output still busy; decoding this file");
+        emit audioProblem(QStringLiteral("Another app was using the audio output, so audio is decoded instead."));
+        return;
+    }
+    qWarning("audio: output busy (another stream on it); decoding, passthrough again in %d s", kBusyRetryMs / 1000);
+    const qint64 entry = m_currentEntry;
+    QTimer::singleShot(kBusyRetryMs, this, [this, entry] {
+        if (entry != m_currentEntry || !m_loaded || m_passthroughFailed)
+            return;
+        m_busyRetried = true;
+        m_outputBusy = false;
+        applySpdif(true);
+        command({ "ao-reload" });
+    });
+}
+
 void Mpv::checkAudioStall()
 {
     // only while playing with audio. A slow disc read can look the same (the
@@ -285,7 +332,8 @@ void Mpv::checkAudioStall()
     const int step = m_recovery++;
     if (step == 0 && !m_spdif.isEmpty()) {
         qWarning("audio: playback stalled; passthrough (%s) off, decoding instead", qPrintable(m_spdif));
-        setMpvProperty("audio-spdif", "");
+        m_passthroughFailed = true;
+        applySpdif(false);
         command({ "ao-reload" });
         emit audioProblem(QStringLiteral("Audio passthrough didn't work, so audio is decoded instead."));
     } else if (step <= 1) {
@@ -376,6 +424,12 @@ void Mpv::processEvents()
                 emit closeRequested();
             break;
         }
+        case MPV_EVENT_LOG_MESSAGE: {
+            auto *msg = static_cast<mpv_event_log_message *>(ev->data);
+            if (qstrncmp(msg->prefix, "ao", 2) == 0 && strstr(msg->text, "no target node"))
+                onAudioOutputBusy();
+            break;
+        }
         case MPV_EVENT_SHUTDOWN:
             emit closeRequested();
             break;
@@ -390,10 +444,13 @@ void Mpv::processEvents()
             m_audioWatchdog.stop();
             m_stalledSecs = 0;
             // try the real output again for each file; passthrough stays off
-            // once it failed (until the next start of the app)
+            // once it stalled (until the next start of the app)
             if (m_recovery >= 3)
                 setMpvProperty("ao", "");
             m_recovery = 0;
+            if (m_outputBusy || m_busyRetried)
+                applySpdif(true);
+            m_outputBusy = m_busyRetried = false;
             break;
         case MPV_EVENT_END_FILE: {
             auto *ef = static_cast<mpv_event_end_file *>(ev->data);
