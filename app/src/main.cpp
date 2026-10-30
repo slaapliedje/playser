@@ -7,12 +7,42 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QSocketNotifier>
 #include <QTimer>
 #include <clocale>
+#include <csignal>
+#include <unistd.h>
 
 #include "Gamepad.h"
 #include "Mpv.h"
 #include "UiRenderer.h"
+
+// SIGTERM (Steam's "Exit game") and SIGINT quit through the event loop, so
+// the player stops and saves its resume point like any other exit.
+static int signalPipe[2] = { -1, -1 };
+
+static void quitOnSignals(QGuiApplication *app)
+{
+    if (pipe(signalPipe) != 0)
+        return;
+    auto *notifier = new QSocketNotifier(signalPipe[0], QSocketNotifier::Read, app);
+    QObject::connect(notifier, &QSocketNotifier::activated, app, [notifier] {
+        char c;
+        if (read(signalPipe[0], &c, 1) == 1)
+            qInfo("signal: quitting");
+        notifier->setEnabled(false);
+        QGuiApplication::quit();
+    });
+    struct sigaction sa = {};
+    sa.sa_handler = [](int) {
+        const char c = 1;
+        [[maybe_unused]] ssize_t n = write(signalPipe[1], &c, 1);
+    };
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGTERM, &sa, nullptr);
+    sigaction(SIGINT, &sa, nullptr);
+}
 
 // MakeMKV's libmmbd stands in for libaacs/libbdplus (docs/spike-results.md,
 // 0a). Prefer an installed MakeMKV Flatpak (com.makemkv.MakeMKV), so its
@@ -132,6 +162,8 @@ int main(int argc, char *argv[])
 
     Mpv mpv(args.isSet("fullscreen"), args.values("mpv-option"));
     QQmlEngine engine;
+    QObject::connect(&engine, &QQmlEngine::quit, &app, &QGuiApplication::quit);
+    quitOnSignals(&app);
     Gamepad gamepad; // outlives the UI, which binds to it
     UiRenderer ui(&mpv);
     QObject::connect(&mpv, &Mpv::closeRequested, &app, &QGuiApplication::quit);
@@ -161,6 +193,7 @@ int main(int argc, char *argv[])
         runScript(&ui, &mpv, args.value("script").split(','), args.value("shot-dir"));
 
     const int ret = app.exec();
+    QMetaObject::invokeMethod(rootItem, "shutdown");
     gamepad.requestInterruption();
     gamepad.wait();
     return ret;

@@ -10,6 +10,12 @@ FocusScope {
     required property Mpv mpv
     required property Gamepad gamepad
 
+    // the app is quitting: stop playback, which saves the resume point
+    function shutdown() {
+        if (player.active)
+            player.close()
+    }
+
     // --play: a file or URL without going through a drive
     function playUrl(url) {
         setup.visible = false

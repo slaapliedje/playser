@@ -64,6 +64,9 @@ void Gamepad::setStyle(const QString &style)
 void Gamepad::run()
 {
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    // SDL's would swallow SIGTERM/SIGINT into an event nobody reads; main()
+    // handles them
+    SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
     if (!SDL_Init(SDL_INIT_GAMEPAD)) {
         qWarning("gamepad: SDL_Init failed: %s", SDL_GetError());
         return;
