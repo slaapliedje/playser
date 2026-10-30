@@ -475,8 +475,9 @@ Status (2026-10-30):
   the Setup submenu, Play Film, seek, the pop-up menu over the film, B
   closing it, View to the main menu. (The colour bars at the bottom of
   its menus are in the disc's menu video.)
-- ⬜ B in a Blu-ray menu leaves the disc: Blu-ray has no "go up", a
-  submenu's own return button does it. The box; menu sound effects.
+- ✅ B in a Blu-ray menu (no "go up" on Blu-ray: a submenu has its own
+  return button) or a DVD's top menu asks "Leave the disc?".
+- ⬜ The box; menu sound effects.
 
 ### Phase 5 — 3D (Blu-ray 3D and side-by-side files)
 **On hold** (2026-10-29) until the box moves to a room with a 3D TV: an LG

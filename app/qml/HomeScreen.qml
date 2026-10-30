@@ -80,59 +80,13 @@ FocusScope {
     }
 
     // B asks first: a second B after leaving a disc shouldn't close the app
-    FocusScope {
+    ConfirmDialog {
         id: exitConfirm
-        anchors.fill: parent
-        visible: false
-
-        function open() {
-            visible = true
-            forceActiveFocus()
-        }
-        function close() {
-            focus = false
-            visible = false
-            list.forceActiveFocus()
-        }
-
-        Keys.onPressed: event => {
-            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                Qt.quit()
-            else if (event.key === Qt.Key_Escape || event.key === Qt.Key_Back)
-                close()
-            event.accepted = true
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            color: "#c0000000"
-        }
-        Rectangle {
-            anchors.centerIn: parent
-            width: 900 * Theme.scale
-            height: column.implicitHeight + Theme.spacing * 4
-            radius: Theme.radius
-            color: Theme.surface
-            Column {
-                id: column
-                anchors.centerIn: parent
-                spacing: Theme.spacing * 2
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Exit Playser?"
-                    color: Theme.text
-                    font.pixelSize: Theme.fontLarge
-                    font.weight: Font.DemiBold
-                }
-                HintBar {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    hints: [
-                        { buttons: ["south"], text: "Exit" },
-                        { buttons: ["east"], text: "Stay" },
-                    ]
-                }
-            }
-        }
+        text: "Exit Playser?"
+        acceptText: "Exit"
+        cancelText: "Stay"
+        returnFocus: list
+        onAccepted: Qt.quit()
     }
 
     component DriveCard: Rectangle {

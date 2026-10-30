@@ -187,7 +187,9 @@ FocusScope {
     }
 
     // Through the disc's menus: d-pad and A work its buttons, B goes to the
-    // menu above (or stops at the top); during a title left/right seek,
+    // menu above (DVD), or asks before leaving the disc where there's none
+    // (a DVD's top menu, any Blu-ray menu: their submenus have their own
+    // return buttons); during a title left/right seek,
     // LB/RB skip chapters. Start opens the disc menu (a Blu-ray's pop-up
     // menu), View the title menu (a Blu-ray's top menu).
     function navKey(key) {
@@ -200,7 +202,7 @@ FocusScope {
             case Qt.Key_Return:
             case Qt.Key_Enter: nav.action("activate"); return true
             case Qt.Key_Escape:
-            case Qt.Key_Back: if (!nav.action("back")) close(); return true
+            case Qt.Key_Back: if (!nav.action("back")) leaveConfirm.open(); return true
             }
         } else {
             switch (key) {
@@ -394,6 +396,16 @@ FocusScope {
                 ]
             }
         }
+    }
+
+    ConfirmDialog {
+        id: leaveConfirm
+        z: 10
+        text: "Leave the disc?"
+        acceptText: "Leave"
+        cancelText: "Stay"
+        returnFocus: root
+        onAccepted: root.close()
     }
 
     // ---- notices (e.g. audio fallback) ----

@@ -61,6 +61,7 @@ qt_add_qml_module(playser
         qml/SetupScreen.qml
         qml/ButtonGlyph.qml
         qml/HintBar.qml
+        qml/ConfirmDialog.qml
 )
 
 target_include_directories(playser PRIVATE src)

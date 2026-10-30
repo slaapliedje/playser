@@ -101,9 +101,10 @@ def main():
 
     # 2. motion menu, its buttons side by side, title 1 from it, chapter
     #    skip, seek, the disc menu from the title, its submenu (the disc has
-    #    no "go up": B goes to the main menu), B at the main menu goes home
+    #    no "go up": B goes to the main menu), B at the main menu asks before
+    #    leaving the disc (B stays, A leaves)
     log = run(opt.app, "4,down,down,enter,3,shot,right,1,shot,enter,3,pgdn,2,left,2,menu,3,shot,"
-                       "enter,3,shot,back,3,shot,back,3,shot,quit", out / "b")
+                       "enter,3,shot,back,3,shot,back,3,shot,back,2,shot,back,2,enter,3,shot,quit", out / "b")
     s = [Shot(out / f"b/shot-0{i}.png") for i in range(1, 6)]
     check("motion menu, first button", outlined(s[0], VTS_BUTTONS[0]) and not outlined(s[0], VTS_BUTTONS[1]))
     check("right moves the highlight", outlined(s[1], VTS_BUTTONS[1]))
@@ -113,7 +114,9 @@ def main():
     check("submenu", near(s[3].at(100, 450), SUB_BG), str(s[3].at(100, 450)))
     check("B in a submenu goes to the main menu", "go up: not on this disc, the main menu instead" in log
           and outlined(s[4], VTS_BUTTONS[0]))
-    check("B at the main menu goes home", "user: go up (refused)" in log and ui_shown(out / "b/shot-06-ui.png"))
+    check("B at the main menu asks", "user: go up (refused)" in log and ui_shown(out / "b/shot-06-ui.png"))
+    check("B in the question stays", not ui_shown(out / "b/shot-07-ui.png"))
+    check("A in the question goes home", ui_shown(out / "b/shot-08-ui.png"))
 
     # 3. the track picker lists the disc's streams and chooses through it
     log = run(opt.app, "4,down,enter,2,info,1,right,down,enter,1,quit", out / "c")
