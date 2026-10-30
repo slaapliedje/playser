@@ -78,7 +78,8 @@ FocusScope {
                 }
             }
             const episodes = drive.disc && drive.disc.episodes ? drive.disc.episodes : []
-            if (episodes.length > 1 || Resume.get(drive.contentHash || drive.label))
+            const extras = drive.disc && drive.disc.extras ? drive.disc.extras : []
+            if (episodes.length > 1 || extras.length || Resume.get(drive.contentHash || drive.label))
                 discScreen.open(drive)
             else
                 player.play(drive)
@@ -95,6 +96,12 @@ FocusScope {
             player.play(d, episodes.length > 1
                 ? episodes.map(e => ({ url: e.url, title: e.title }))
                 : null, index, start)
+        }
+        // watching an extra leaves the film's resume point alone, and
+        // returns here
+        onExtraRequested: extra => {
+            visible = false
+            player.play(drive, [{ url: extra.url, title: extra.title, extra: true }], 0, 0)
         }
         onClosed: home.forceActiveFocus()
     }
@@ -118,6 +125,11 @@ FocusScope {
         id: player
         anchors.fill: parent
         mpv: root.mpv
-        onClosed: home.forceActiveFocus()
+        onClosed: wasExtra => {
+            if (wasExtra)
+                discScreen.reopen()
+            else
+                home.forceActiveFocus()
+        }
     }
 }

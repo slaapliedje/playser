@@ -16,11 +16,12 @@ FocusScope {
     // the catalogue's title when the disc is known, else the volume label
     readonly property string displayTitle: !drive ? ""
         : drive.disc && drive.disc.title ? drive.disc.title : Theme.titleFromLabel(drive.label)
-    // the episode's title for a series, else empty
-    readonly property string entryTitle: queue.length > 1 ? (entry.title || "") : ""
+    // the episode's title for a series, or the extra's; else empty
+    readonly property string entryTitle: queue.length > 1 || entry.extra ? (entry.title || "") : ""
     // from play() until mpv has opened the title; a UHD takes ~20 s
     property bool opening: false
-    signal closed()
+    // wasExtra: it played one of the disc's extras
+    signal closed(bool wasExtra)
 
     // q: the queue (default: the disc's own url); i: entry; start: seconds
     function play(d, q, i, start) {
@@ -39,7 +40,7 @@ FocusScope {
     }
 
     function saveResume() {
-        if (!opening && root.mpv.duration > 0)
+        if (!entry.extra && !opening && root.mpv.duration > 0)
             Resume.save(resumeKey, { index: index, position: Math.floor(root.mpv.position), title: entry.title || "" })
     }
 
@@ -49,7 +50,7 @@ FocusScope {
         active = false
         opening = false
         picker.visible = false
-        closed()
+        closed(!!entry.extra)
     }
 
     function showOsd() {
@@ -81,7 +82,8 @@ FocusScope {
             if (reason === "eof" && root.index + 1 < root.queue.length) {
                 root.loadEntry(root.index + 1, 0)
             } else if (reason === "eof") {
-                Resume.clear(root.resumeKey) // watched to the end
+                if (!root.entry.extra)
+                    Resume.clear(root.resumeKey) // watched to the end
                 root.opening = true // keep close() from saving the final position
                 root.close()
             } else if (reason === "error") {
@@ -196,7 +198,7 @@ FocusScope {
             Text {
                 width: parent.width
                 text: (root.displayTitle || root.mpv.mediaTitle)
-                      + (root.entryTitle ? "  ·  " + (root.index + 1) + ". " + root.entryTitle : "")
+                      + (root.entryTitle ? "  ·  " + (root.queue.length > 1 ? (root.index + 1) + ". " : "") + root.entryTitle : "")
                 color: Theme.text
                 font.pixelSize: Theme.fontLarge
                 font.weight: Font.DemiBold

@@ -26,11 +26,13 @@ QVariantList playlists(const QString &discRoot);
 QVariantList dvdTitles(const QString &discRoot);
 
 // Gives catalogue items the mpv URL that plays them (item.url) and adds
-// `mainUrl` (the first MainMovie's) and `episodes`: the Episode items in
-// disc order. Blu-ray items name a playlist, or a clip ("00011.m2ts") that
-// is played through its one-clip playlist. DVD items name a title set
-// (VTS), which can hold several titles: the title is the one in that set
-// whose length matches. Reads the disc: call it off the GUI thread.
+// `mainUrl` (the first MainMovie's), `episodes` (the Episode items) and
+// `extras` (the rest: featurettes, trailers, deleted scenes...), both in
+// disc order and only those that can be played. Blu-ray items name a
+// playlist, or a clip ("00011.m2ts") that is played through its one-clip
+// playlist. DVD items name a title set (VTS), which can hold several
+// titles: the title is the one in that set whose length matches. Reads the
+// disc: call it off the GUI thread.
 void resolveTitles(QVariantMap &disc, const QString &discRoot);
 
 // The catalogue entry for a hash, or an empty map:

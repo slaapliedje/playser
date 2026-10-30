@@ -221,7 +221,7 @@ void DiscIndex::resolveTitles(QVariantMap &disc, const QString &discRoot)
         }
     }
 
-    QVariantList episodes;
+    QVariantList episodes, extras;
     for (QVariant &v : items) {
         QVariantMap item = v.toMap();
         const QString source = item.value("source").toString().toLower();
@@ -261,14 +261,20 @@ void DiscIndex::resolveTitles(QVariantMap &disc, const QString &discRoot)
             continue;
         if (item.value("type") == "MainMovie" && !disc.contains("mainUrl"))
             disc.insert("mainUrl", item.value("url"));
-        if (item.value("type") == "Episode")
+        const QString type = item.value("type").toString();
+        if (type == "Episode")
             episodes.append(item);
+        else if (type != "MainMovie")
+            extras.append(item);
     }
-    std::sort(episodes.begin(), episodes.end(), [](const QVariant &a, const QVariant &b) {
+    const auto byOrder = [](const QVariant &a, const QVariant &b) {
         return a.toMap().value("order").toInt() < b.toMap().value("order").toInt();
-    });
+    };
+    std::stable_sort(episodes.begin(), episodes.end(), byOrder);
+    std::stable_sort(extras.begin(), extras.end(), byOrder);
     disc.insert("items", items);
     disc.insert("episodes", episodes);
+    disc.insert("extras", extras);
 }
 
 QVariantMap DiscIndex::discMeta(const QString &discRoot)

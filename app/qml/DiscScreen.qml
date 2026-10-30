@@ -2,7 +2,8 @@ import QtQuick
 import Playser
 
 // What to play from a disc: resume, play all and the episodes of a series,
-// or resume / start over for a film. Up/down choose, A plays, B goes back.
+// or resume / start over for a film, and the disc's extras (from the
+// catalogue) on a list of their own. Up/down choose, A plays, B goes back.
 FocusScope {
     id: root
 
@@ -10,10 +11,15 @@ FocusScope {
     readonly property var disc: drive && drive.disc ? drive.disc : ({})
     readonly property var episodes: disc.episodes || []
     readonly property bool series: episodes.length > 1
+    readonly property var extras: disc.extras || []
     property var resume: null
+    // the extras list rather than the main one
+    property bool showingExtras: false
 
     // index into the play queue (episode), start position in seconds
     signal playRequested(int index, real start)
+    // one of disc.extras
+    signal extraRequested(var extra)
     signal closed()
 
     visible: false
@@ -21,36 +27,71 @@ FocusScope {
     function open(d) {
         drive = d
         resume = Resume.get(d.contentHash || d.label)
+        showingExtras = false
         visible = true
         list.currentIndex = 0
         list.forceActiveFocus()
     }
 
-    function close() {
+    // back from playing an extra: the list as it was left
+    function reopen() {
+        visible = true
+        list.forceActiveFocus()
+    }
+
+    function back() {
+        if (showingExtras) {
+            showingExtras = false
+            list.currentIndex = rows.findIndex(r => r.extras)
+            list.positionViewAtIndex(list.currentIndex, ListView.Contain)
+            return
+        }
         focus = false
         visible = false
         closed()
     }
 
+    function showExtras() {
+        showingExtras = true
+        list.currentIndex = 0
+        list.positionViewAtBeginning()
+    }
+
+    // the catalogue's kinds of extra; the generic "Extra" and "Other" go unsaid
+    readonly property var typeLabels: ({
+        "DeletedScene": "Deleted scene", "Featurette": "Featurette", "Trailer": "Trailer",
+        "Interview": "Interview", "Short": "Short", "Music": "Music", "Scene": "Scene"
+    })
+
     readonly property var rows: {
         const r = []
+        if (showingExtras) {
+            extras.forEach(e => r.push({
+                label: e.title || "Untitled", extra: e,
+                detail: [typeLabels[e.type], Theme.formatTime(e.seconds)].filter(x => x).join("  ·  ") }))
+            return r
+        }
         if (resume)
             r.push({ label: "Resume", index: resume.index, start: resume.position,
                      detail: (series && episodes[resume.index] ? episodes[resume.index].title + "  ·  " : "")
                              + Theme.formatTime(resume.position) })
         if (series) {
             r.push({ label: "Play all", detail: episodes.length + " episodes", index: 0, start: 0 })
+            if (extras.length)
+                r.push({ label: "Extras", detail: extras.length + "", extras: true })
             episodes.forEach((e, i) => r.push({
                 label: (i + 1) + ".  " + e.title, detail: Theme.formatTime(e.seconds), index: i, start: 0,
                 watching: !!resume && resume.index === i }))
         } else {
-            r.push({ label: "Play from the beginning", detail: "", index: 0, start: 0 })
+            r.push({ label: resume ? "Play from the beginning" : "Play", detail: "", index: 0, start: 0 })
+            if (extras.length)
+                r.push({ label: "Extras", detail: extras.length + "", extras: true })
         }
         return r
     }
 
-    Keys.onEscapePressed: close()
-    Keys.onBackPressed: close()
+    Keys.onEscapePressed: back()
+    Keys.onBackPressed: back()
 
     Rectangle {
         anchors.fill: parent
@@ -70,7 +111,7 @@ FocusScope {
             elide: Text.ElideRight
         }
         Text {
-            text: root.disc.release || ""
+            text: root.showingExtras ? "Extras" : (root.disc.release || "")
             color: Theme.textDim
             font.pixelSize: Theme.fontMedium
         }
@@ -108,7 +149,7 @@ FocusScope {
                 text: modelData.label
                 color: modelData.watching ? Theme.accent : Theme.text
                 font.pixelSize: Theme.fontMedium
-                font.weight: index === 0 ? Font.DemiBold : Font.Normal
+                font.weight: index === 0 && !root.showingExtras ? Font.DemiBold : Font.Normal
                 elide: Text.ElideRight
             }
             Text {
@@ -122,7 +163,13 @@ FocusScope {
 
         Keys.onReturnPressed: {
             const r = root.rows[currentIndex]
-            if (r)
+            if (!r)
+                return
+            if (r.extras)
+                root.showExtras()
+            else if (r.extra)
+                root.extraRequested(r.extra)
+            else
                 root.playRequested(r.index, r.start)
         }
     }

@@ -174,8 +174,12 @@ Status (2026-10-28), `app/`:
   item gets the title in that set whose length matches (within 5 s or 2%,
   each title used once). mpv counts DVD titles from 0 (`dvd://1` is the
   disc's title 2). Verified on a synthetic 3-title, 2-VTS DVD
-  (`build/fixtures/dvd-titles`); not yet on a real catalogued DVD. Still
-  to do: an Extras screen, and a
+  (`build/fixtures/dvd-titles`); not yet on a real catalogued DVD. Extras
+  (2026-10-29): the disc screen has an Extras row (the catalogue's
+  featurettes, trailers, deleted scenes... in disc order); an extra plays
+  without touching the film's resume point and returns to the list. Discs
+  with extras now open the disc screen on Play. Verified with the 14
+  extras of *Masters of the Universe*. Still to do: a
   libudfread reader so discs needn't be mounted. Original notes: (https://thediscdb.com, data repo
   `TheDiscDb/data`, MIT; ~6,150 discs as of 2026-10-29). Each disc record
   has a `ContentHash` and labels playlists `MainMovie` / `Extra` /
