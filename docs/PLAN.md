@@ -458,7 +458,10 @@ Status (2026-10-30):
 - ✅ Back to the Future on the box (Flatpak, Game Mode): mounted by the
   app, Universal intro, main menu, highlight, Chapters submenu. The disc's
   BD-Live sockets are refused (its online ticker stays empty).
-- ⬜ Not yet: resume through Blu-ray menus, Play all without reopening the disc (the
+- ✅ Resume through Blu-ray menus: a film started from the disc's menu
+  saves its playlist (`bd://mpls/N`) and resumes there without the menus
+  (Legend: stopped at 1:52, resumed at 1:52).
+- ⬜ Not yet: Play all without reopening the disc (the
   original reason for navigation mode), the background graphics plane,
   menu sound effects.
 

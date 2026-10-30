@@ -288,7 +288,8 @@ QVariantMap DiscNav::position() const
     double seconds = 0, length = 0;
     if (!m_ctx || !discnav_get_position(m_ctx->nav, &title, &seconds, &length))
         return {};
-    return { { "title", title }, { "seconds", seconds }, { "length", length } };
+    return { { "title", title }, { "seconds", seconds }, { "length", length },
+             { "playlist", discnav_get_playlist(m_ctx->nav) } };
 }
 
 bool DiscNav::seek(double seconds)

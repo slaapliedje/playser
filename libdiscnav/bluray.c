@@ -724,6 +724,14 @@ static bool bdn_get_position(nav_impl_t *nav, int *title, double *seconds, doubl
     return ok;
 }
 
+static int bdn_get_playlist(nav_impl_t *nav)
+{
+    pthread_mutex_lock(&nav->lock);
+    int playlist = !menu_now(nav) && nav->info ? nav->playlist : -1;
+    pthread_mutex_unlock(&nav->lock);
+    return playlist;
+}
+
 static bool bdn_seek(nav_impl_t *nav, double seconds)
 {
     pthread_mutex_lock(&nav->lock);
@@ -914,6 +922,7 @@ const nav_backend_t bd_backend = {
     .get_streams = bdn_get_streams,
     .select_stream = bdn_select_stream,
     .get_position = bdn_get_position,
+    .get_playlist = bdn_get_playlist,
     .seek = bdn_seek,
     .get_palette = bdn_get_palette,
     .overlay_size = bdn_overlay_size,

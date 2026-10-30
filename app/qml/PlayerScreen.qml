@@ -62,14 +62,15 @@ FocusScope {
     }
 
     // url: what to play to resume (a title through menus resumes as that
-    // title, without the menus)
+    // title, without the menus: a DVD's title, a Blu-ray's playlist)
     function saveResume() {
         if (opening || entry.extra)
             return
         if (navigating) {
             const p = nav.position() // nothing to save in a menu
             if (p.title) {
-                const url = "dvd://" + (p.title - 1) // mpv counts titles from 0
+                const url = nav.format === "bluray" ? "bd://mpls/" + p.playlist
+                                                    : "dvd://" + (p.title - 1) // mpv counts titles from 0
                 const item = ((drive.disc && drive.disc.items) || []).find(i => i.url === url)
                 Resume.save(resumeKey, { index: 0, position: Math.floor(p.seconds), url: url,
                                          title: item ? item.title : "" })

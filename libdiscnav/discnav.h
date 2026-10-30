@@ -151,6 +151,11 @@ bool discnav_select_stream(discnav_t *nav, discnav_stream_type_t type, int index
  * in a menu. Runs ahead of what's on screen by the player's read-ahead. */
 bool discnav_get_position(discnav_t *nav, int *title, double *seconds, double *length);
 
+/* Blu-ray: the playlist playing (00042.mpls is 42), the unit a player
+ * opens a title by without menus (e.g. mpv's bd://mpls/42). -1 in a menu
+ * or on a DVD. */
+int discnav_get_playlist(discnav_t *nav);
+
 /* Jumps to `seconds` into the current title (a user jump: expect a
  * flush). False in a menu or if the disc refuses. */
 bool discnav_seek(discnav_t *nav, double seconds);

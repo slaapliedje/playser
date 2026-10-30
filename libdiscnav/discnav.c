@@ -103,6 +103,11 @@ bool discnav_get_position(discnav_t *nav, int *title, double *seconds, double *l
     return nav->be->get_position(nav->impl, title, seconds, length);
 }
 
+int discnav_get_playlist(discnav_t *nav)
+{
+    return nav->be->get_playlist ? nav->be->get_playlist(nav->impl) : -1;
+}
+
 bool discnav_seek(discnav_t *nav, double seconds) { return nav->be->seek(nav->impl, seconds); }
 bool discnav_get_palette(discnav_t *nav, uint32_t rgb[16]) { return nav->be->get_palette(nav->impl, rgb); }
 bool discnav_overlay_size(discnav_t *nav, int *w, int *h) { return nav->be->overlay_size(nav->impl, w, h); }

@@ -28,6 +28,7 @@ typedef struct {
     int (*get_streams)(nav_impl_t *nav, discnav_stream_type_t type, discnav_stream_info_t *streams, int max);
     bool (*select_stream)(nav_impl_t *nav, discnav_stream_type_t type, int index);
     bool (*get_position)(nav_impl_t *nav, int *title, double *seconds, double *length);
+    int (*get_playlist)(nav_impl_t *nav);
     bool (*seek)(nav_impl_t *nav, double seconds);
     bool (*get_palette)(nav_impl_t *nav, uint32_t rgb[16]);
     bool (*overlay_size)(nav_impl_t *nav, int *w, int *h);

@@ -56,8 +56,8 @@ public:
     // "popup" (a Blu-ray's pop-up menu).
     // False if the disc refused.
     Q_INVOKABLE bool action(const QString &name);
-    // { title (1-based), seconds, length } while a title plays; empty in
-    // a menu
+    // { title (1-based), seconds, length, playlist (Blu-ray, else -1) }
+    // while a title plays; empty in a menu
     Q_INVOKABLE QVariantMap position() const;
     // Jumps to `seconds` into the current title. False in a menu.
     Q_INVOKABLE bool seek(double seconds);
