@@ -285,3 +285,43 @@ Product implications:
   (gamescope setting) rather than a fixed 203, if it can be queried.
 - The same path carries `libdiscnav` menu graphics (DVD SPU, BD IG/BD-J
   ARGB), which are SDR BT.709 and need the same conversion over HDR.
+
+## 0e — BD-J menus via libbluray navigation mode (2026-10-30, Garuda)
+
+Question: does libbluray run a modern disc's BD-J menu, and in which
+environment? `spikes/0e-bdj/bdj.c`: `bd_open` + `bd_play` (First Play),
+`bd_read_ext` paced at ~60 Mbit/s with the data discarded, events logged,
+ARGB planes (`bd_register_argb_overlay_proc` with an app-allocated
+`BD_ARGB_BUFFER`) saved on flushes, keys through `bd_user_input`
+(pressed + typed + released). Disc: *Masters of the Universe* UHD
+(AACS 2 via libmmbd, LibreDrive), 88 HDMV + 2 BD-J titles, First Play BD-J.
+
+**Java version matters.**
+- Java 27 (the desktop's default): fails. libbluray needs a
+  SecurityManager; Java 18–23 still allow its workaround, Java 24+ removed
+  it ("Failed initializing SecurityManager", "Can't play BD-J title").
+- A headless JRE fails too: libbluray starts the JVM with
+  `-Djava.awt.headless=false` (and its own `BDToolkit`), so AWT loads
+  `libawt_xawt.so`. A full JRE is needed, though no X server is used.
+- Java 21 works: the Flathub extension
+  `org.freedesktop.Sdk.Extension.openjdk21//25.08` (our runtime's branch)
+  has a full JDK (runs on the host too, `JAVA_HOME=<ext>/jvm/openjdk-21`),
+  Ant for building `libbluray-j2se.jar`, and `install.sh`, which copies a
+  JRE to `/app/jre`.
+
+**With Java 21 it works end to end.** BD-J starts in ~0.1 s, shows a
+loading bar, plays its intro playlist (1163), then the main menu over a
+looping background playlist (149): Play / Scene Selections / Audio /
+Subtitles / Special Features drawn into the IG plane (1920x1080 ARGB).
+Right moves the highlight, Enter on Audio opens the disc's audio list
+(nine languages). Harmless noise: the disc's Java logs
+`StreamNotAvailableException` while nothing reads the streams.
+
+Product implications:
+- The Flatpak bundles the openjdk21 extension's JRE (`/app/jre`) and
+  builds libbluray with `-Dbdj_jar=enabled` using its JDK and Ant;
+  `JAVA_HOME=/app/jre` at run time. Stay on Java 21 (LTS) until
+  libbluray stops needing the SecurityManager.
+- Navigation needs `bd_play` + `bd_read_ext` feeding the player (as
+  libdiscnav does for DVDs): the menus are playlists with video behind
+  the graphics.
