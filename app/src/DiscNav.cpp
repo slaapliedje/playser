@@ -247,6 +247,15 @@ bool DiscNav::action(const QString &name)
     return discnav_action(m_ctx->nav, it.value());
 }
 
+QVariantMap DiscNav::position() const
+{
+    int title = 0;
+    double seconds = 0;
+    if (!m_ctx || !discnav_get_position(m_ctx->nav, &title, &seconds))
+        return {};
+    return { { "title", title }, { "seconds", seconds } };
+}
+
 void DiscNav::load()
 {
     m_loadPending = true;

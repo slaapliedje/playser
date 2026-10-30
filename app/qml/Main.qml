@@ -109,6 +109,10 @@ FocusScope {
         }
         // watching an extra leaves the film's resume point alone, and
         // returns here
+        onUrlRequested: (url, start) => {
+            visible = false
+            player.play(drive, [{ url: url, title: "" }], 0, start)
+        }
         onMenuRequested: {
             visible = false
             player.playMenu(drive)

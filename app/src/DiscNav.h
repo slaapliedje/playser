@@ -45,6 +45,8 @@ public:
     // (title menu), "back" (the menu above), "previous"/"next" (chapter).
     // False if the disc refused.
     Q_INVOKABLE bool action(const QString &name);
+    // { title (1-based), seconds } while a title plays; empty in a menu
+    Q_INVOKABLE QVariantMap position() const;
 
 signals:
     void mpvChanged();

@@ -57,10 +57,23 @@ FocusScope {
         showOsd()
     }
 
+    // url: what to play to resume (a title through menus resumes as that
+    // title, without the menus)
     function saveResume() {
-        // a disc played through its menus has no position to come back to
-        if (!navigating && !entry.extra && !opening && root.mpv.duration > 0)
-            Resume.save(resumeKey, { index: index, position: Math.floor(root.mpv.position), title: entry.title || "" })
+        if (opening || entry.extra)
+            return
+        if (navigating) {
+            const p = nav.position() // nothing to save in a menu
+            if (p.title) {
+                const url = "dvd://" + (p.title - 1) // mpv counts titles from 0
+                const item = ((drive.disc && drive.disc.items) || []).find(i => i.url === url)
+                Resume.save(resumeKey, { index: 0, position: Math.floor(p.seconds), url: url,
+                                         title: item ? item.title : "" })
+            }
+        } else if (root.mpv.duration > 0) {
+            Resume.save(resumeKey, { index: index, position: Math.floor(root.mpv.position), url: entry.url,
+                                     title: entry.title || "" })
+        }
     }
 
     function close() {
@@ -164,9 +177,9 @@ FocusScope {
             case Qt.Key_PageDown: nav.action("next"); showOsd(); return true
             }
         }
-        switch (key) {
-        case Qt.Key_Menu: nav.action("menu"); return true
-        case Qt.Key_TopMenu: nav.action("title"); return true
+        switch (key) { // leaving a title: keep its position first
+        case Qt.Key_Menu: saveResume(); nav.action("menu"); return true
+        case Qt.Key_TopMenu: saveResume(); nav.action("title"); return true
         }
         return false
     }

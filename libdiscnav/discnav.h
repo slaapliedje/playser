@@ -101,6 +101,11 @@ typedef struct {
 
 void discnav_get_tracks(discnav_t *nav, discnav_tracks_t *tracks);
 
+/* Where playback is: the title (1-based, as the disc numbers them) and
+ * the time into it. False in a menu. Runs ahead of what's on screen by
+ * the player's read-ahead. */
+bool discnav_get_position(discnav_t *nav, int *title, double *seconds);
+
 /* The current subpicture palette as 0xRRGGBB, for a player that decodes
  * title subtitles itself. False before the disc has set one. */
 bool discnav_get_palette(discnav_t *nav, uint32_t rgb[16]);

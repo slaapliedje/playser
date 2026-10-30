@@ -561,6 +561,19 @@ void discnav_get_tracks(discnav_t *nav, discnav_tracks_t *t)
     pthread_mutex_unlock(&nav->lock);
 }
 
+bool discnav_get_position(discnav_t *nav, int *title, double *seconds)
+{
+    pthread_mutex_lock(&nav->lock);
+    int32_t t = 0, part = 0;
+    bool ok = dvdnav_current_title_info(nav->dvd, &t, &part) == DVDNAV_STATUS_OK && t > 0;
+    if (ok) {
+        *title = t;
+        *seconds = dvdnav_get_current_time(nav->dvd) / 90000.0;
+    }
+    pthread_mutex_unlock(&nav->lock);
+    return ok;
+}
+
 bool discnav_get_palette(discnav_t *nav, uint32_t rgb[16])
 {
     pthread_mutex_lock(&nav->olock);

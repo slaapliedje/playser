@@ -18,6 +18,8 @@ FocusScope {
 
     // index into the play queue (episode), start position in seconds
     signal playRequested(int index, real start)
+    // a url with a start position (resuming a film or DVD title)
+    signal urlRequested(string url, real start)
     // one of disc.extras
     signal extraRequested(var extra)
     // the disc through its own menus (DVD)
@@ -75,6 +77,7 @@ FocusScope {
         }
         if (resume)
             r.push({ label: "Resume", index: resume.index, start: resume.position,
+                     url: series ? "" : (resume.url || ""),
                      detail: (series && episodes[resume.index] ? episodes[resume.index].title + "  ·  " : "")
                              + Theme.formatTime(resume.position) })
         if (series) {
@@ -175,6 +178,8 @@ FocusScope {
                 root.showExtras()
             else if (r.menu)
                 root.menuRequested()
+            else if (r.url)
+                root.urlRequested(r.url, r.start)
             else if (r.extra)
                 root.extraRequested(r.extra)
             else
