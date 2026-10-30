@@ -35,7 +35,8 @@ FocusScope {
         loadEntry(i || 0, start || 0)
     }
 
-    // the disc from its start, menus and all (DVD)
+    // the disc from its start, menus and all (DVD, Blu-ray); opening
+    // continues in the background (onOpenFailed)
     function playMenu(d) {
         drive = d
         queue = [{ url: "discnav://", title: displayTitle }]
@@ -43,11 +44,13 @@ FocusScope {
         active = true
         opening = true
         forceActiveFocus()
-        if (!nav.open(d.device)) {
-            opening = false
-            active = false
-            closed(false)
-        }
+        nav.open(d.device)
+    }
+
+    function showNotice(message) {
+        notice.text = message
+        noticeBox.opacity = 1
+        noticeTimer.restart()
     }
 
     function loadEntry(i, start) {
@@ -108,11 +111,7 @@ FocusScope {
             root.opening = false
             root.showOsd()
         }
-        function onAudioProblem(message) {
-            notice.text = message
-            noticeBox.opacity = 1
-            noticeTimer.restart()
-        }
+        function onAudioProblem(message) { root.showNotice(message) }
         function onEndFile(reason) {
             if (!root.active || root.navigating) // DiscNav loads the next segment
                 return
@@ -145,6 +144,21 @@ FocusScope {
     Connections {
         target: root.nav
         function onStopped() { if (root.active) root.close() }
+        // the menus didn't start (e.g. a BD-J disc the menus can't run):
+        // play the film the usual way if there's one
+        function onOpenFailed() {
+            if (!root.active)
+                return
+            const d = root.drive
+            if (d && d.url) {
+                root.play(d)
+                root.showNotice("The disc's menus didn't start: playing the film")
+            } else {
+                root.opening = false
+                root.active = false
+                root.closed(false)
+            }
+        }
         function onInMenuChanged() {
             if (root.nav.inMenu)
                 osd.opacity = 0
@@ -173,7 +187,8 @@ FocusScope {
 
     // Through the disc's menus: d-pad and A work its buttons, B goes to the
     // menu above (or stops at the top); during a title left/right seek,
-    // LB/RB skip chapters, Start opens the disc menu, View the title menu.
+    // LB/RB skip chapters. Start opens the disc menu (a Blu-ray's pop-up
+    // menu), View the title menu (a Blu-ray's top menu).
     function navKey(key) {
         if (nav.inMenu) {
             switch (key) {
@@ -194,9 +209,10 @@ FocusScope {
             case Qt.Key_PageDown: nav.action("next"); showOsd(); return true
             }
         }
+        const bluray = nav.format === "bluray"
         switch (key) { // leaving a title: keep its position first
-        case Qt.Key_Menu: saveResume(); nav.action("menu"); return true
-        case Qt.Key_TopMenu: saveResume(); nav.action("title"); return true
+        case Qt.Key_Menu: saveResume(); nav.action(bluray ? "popup" : "menu"); return true
+        case Qt.Key_TopMenu: saveResume(); nav.action(bluray ? "menu" : "title"); return true
         }
         return false
     }

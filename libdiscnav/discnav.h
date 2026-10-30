@@ -2,13 +2,15 @@
  * libdiscnav: disc menus for players that take a byte stream.
  * SPDX-License-Identifier: LGPL-2.1-or-later
  *
- * DVD navigation on top of libdvdnav: the DVD VM runs here and hands out
- * the disc as one MPEG-PS byte stream per "segment", which a player (e.g.
+ * The disc's navigation runs here (DVD: libdvdnav; Blu-ray: libbluray,
+ * HDMV and BD-J) and hands out the disc as one byte stream per "segment"
+ * (DVD: MPEG-PS; Blu-ray: M2TS, 192-byte packets), which a player (e.g.
  * libmpv through a stream_cb protocol) opens as a file. A segment ends at
- * a discontinuity (a jump, a new title set, a looping menu's restart); the
- * player then opens the next one, which continues wherever the VM is. Menu
- * graphics (subpictures with the disc's palette and button highlights) are
- * composited here and drawn by the player as an overlay.
+ * a discontinuity (a jump, a new title set or playlist, a looping menu's
+ * restart); the player then opens the next one, which continues wherever
+ * the disc is. Menu graphics (DVD subpictures with the disc's palette and
+ * button highlights, Blu-ray graphics planes) are composited here and
+ * drawn by the player as an overlay.
  *
  * Threads: the stream functions run on the player's reader thread, the
  * rest on any other; all calls are serialised internally. Callbacks come
@@ -26,6 +28,7 @@ extern "C" {
 #endif
 
 typedef struct discnav discnav_t;
+typedef enum { DISCNAV_DVD, DISCNAV_BLURAY } discnav_format_t;
 typedef struct discnav_stream discnav_stream_t;
 
 typedef enum {
@@ -46,11 +49,15 @@ typedef void (*discnav_event_fn)(void *user, discnav_event_t event);
 /* level 0: notable, 1: detail (every highlight move, segment, still) */
 typedef void (*discnav_log_fn)(void *user, int level, const char *message);
 
-/* Opens a DVD (device, image or VIDEO_TS directory). `lang` is the
- * preferred menu/audio/subtitle language ("en"). NULL on failure. */
+/* Opens a DVD or Blu-ray (device, image, or a directory holding VIDEO_TS
+ * or BDMV). `lang` is the preferred menu/audio/subtitle language ("en").
+ * NULL on failure. A Blu-ray's open can take seconds (AACS): call it off
+ * the UI thread. */
 discnav_t *discnav_open(const char *device, const char *lang,
                         discnav_event_fn on_event, discnav_log_fn on_log, void *user);
 void discnav_close(discnav_t *nav);
+
+discnav_format_t discnav_format(discnav_t *nav);
 
 /* The disc's volume title, or "" */
 const char *discnav_title(discnav_t *nav);
@@ -79,6 +86,7 @@ typedef enum {
     DISCNAV_GO_UP,        /* the menu "above" this one, per the disc */
     DISCNAV_PREV_CHAPTER,
     DISCNAV_NEXT_CHAPTER,
+    DISCNAV_POPUP_MENU,   /* Blu-ray: the pop-up menu over the film */
 } discnav_action_t;
 
 /* False if the disc refused (e.g. no button here, menu not available). */
@@ -87,9 +95,10 @@ bool discnav_action(discnav_t *nav, discnav_action_t action);
 /* ---- state ---- */
 
 typedef struct {
-    /* MPEG-PS stream ids the VM selected (what lavf/mpv call src-id):
-     * AC3 0x80+n, DTS 0x88+n, LPCM 0xa0+n, MPEG audio 0x1c0+n, subpicture
-     * 0x20+n; -1 for none */
+    /* the streams the disc selected, as the demuxer's stream ids (what
+     * lavf/mpv call src-id); -1 for none. DVD (MPEG-PS stream ids): AC3
+     * 0x80+n, DTS 0x88+n, LPCM 0xa0+n, MPEG audio 0x1c0+n, subpicture
+     * 0x20+n. Blu-ray: MPEG-TS PIDs (audio 0x1100+n, PG 0x1200+n). */
     int audio_id;
     int sub_id;
     /* subtitles are off: show only forced subpictures */
@@ -116,10 +125,14 @@ typedef enum {
 
 typedef struct {
     int index;           /* the disc's stream number, for discnav_select_stream */
-    int id;              /* MPEG-PS stream id, as in discnav_tracks_t */
-    char lang[3];        /* ISO 639-1 ("en"), "" if the disc doesn't say */
+    int id;              /* the demuxer's stream id, as in discnav_tracks_t */
+    /* "en" (DVD: ISO 639-1) or "eng" (Blu-ray: ISO 639-2), "" if the disc
+     * doesn't say */
+    char lang[4];
     discnav_kind_t kind;
-    const char *format;  /* audio: "ac3", "dts", "lpcm", "mpeg", "sdds"; else "" */
+    /* audio: "ac3", "eac3", "dts", "dtshd", "truehd", "lpcm", "mpeg",
+     * "sdds"; else "" */
+    const char *format;
     int channels;        /* audio */
     bool selected;       /* subtitles: shown (not just forced ones) */
 } discnav_stream_info_t;
@@ -146,10 +159,15 @@ bool discnav_seek(discnav_t *nav, double seconds);
  * title subtitles itself. False before the disc has set one. */
 bool discnav_get_palette(discnav_t *nav, uint32_t rgb[16]);
 
-/* Composites the menu graphics into a frame-sized buffer (fw x fh, the
- * video's storage size, e.g. 720x480; bytes R,G,B,A, straight alpha).
- * False if there are none (the buffer is then cleared). */
-bool discnav_render_overlay(discnav_t *nav, uint8_t *rgba, int fw, int fh);
+/* The size discnav_render_overlay wants, if the disc's graphics have
+ * their own (Blu-ray: 1920x1080, drawn over the whole picture). False if
+ * they're at the video's storage size (DVD, e.g. 720x480). */
+bool discnav_overlay_size(discnav_t *nav, int *w, int *h);
+
+/* Composites the menu graphics into a w x h buffer (bytes R,G,B,A,
+ * straight alpha; see discnav_overlay_size). False if there are none (the
+ * buffer is then cleared). */
+bool discnav_render_overlay(discnav_t *nav, uint8_t *rgba, int w, int h);
 
 #ifdef __cplusplus
 }

@@ -7,6 +7,7 @@
 #include <mpv/client.h>
 #include <mpv/stream_cb.h>
 #include <mutex>
+#include <thread>
 
 #include <discnav.h>
 
@@ -14,16 +15,24 @@ Q_LOGGING_CATEGORY(lcNav, "playser.discnav", QtInfoMsg)
 
 namespace {
 
-// Settings for discnav segments (docs/spike-results.md, 0b), per file so
-// other playback keeps mpv's defaults: MPEG-PS has no header, so the format
-// is given and probing kept short but long enough (1 MB) to see the first
+// Settings for DVD segments (docs/spike-results.md, 0b), per file so other
+// playback keeps mpv's defaults: MPEG-PS has no header, so the format is
+// given and probing kept short but long enough (1 MB) to see the first
 // audio packet; a one-picture still needs the first frame shown without
 // waiting for a second, and no frame threading (nothing drains it during a
 // still); the VM chooses the tracks (applyTracks), never mpv.
-const QStringList kSegmentOptions = {
+const QStringList kDvdSegmentOptions = {
     "demuxer-lavf-format=mpeg", "demuxer-lavf-probesize=1048576", "demuxer-lavf-analyzeduration=0.5",
     "cache=no", "demuxer-readahead-secs=0.5", "video-latency-hacks=yes", "vd-lavc-threads=1",
     "sid=no",
+};
+
+// Blu-ray segments: M2TS (192-byte packets, which lavf's mpegts detects);
+// little read-ahead so a user's jump flushes little; frame threading stays
+// (UHD HEVC needs it).
+const QStringList kBdSegmentOptions = {
+    "demuxer-lavf-format=mpegts", "demuxer-lavf-probesize=5000000", "demuxer-lavf-analyzeduration=1",
+    "cache=no", "demuxer-readahead-secs=0.5", "sid=no",
 };
 
 // the disc's menu graphics, under the UI (UiRenderer: overlay 1)
@@ -178,17 +187,41 @@ void DiscNav::setMpv(Mpv *mpv)
     emit mpvChanged();
 }
 
-bool DiscNav::open(const QString &device)
+QString DiscNav::format() const
+{
+    if (!m_ctx)
+        return {};
+    return discnav_format(m_ctx->nav) == DISCNAV_BLURAY ? QStringLiteral("bluray") : QStringLiteral("dvd");
+}
+
+void DiscNav::open(const QString &device)
 {
     close();
-    if (!m_mpv)
-        return false;
+    if (!m_mpv) {
+        emit openFailed();
+        return;
+    }
+    const unsigned generation = ++m_generation;
     auto *ctx = new NavContext;
-    ctx->nav = discnav_open(QFile::encodeName(device).constData(), "en",
-                            onEvent, onLog, ctx);
-    if (!ctx->nav) {
-        delete ctx;
-        return false;
+    // a Blu-ray's open takes seconds (AACS, BD-J's JVM): off the UI thread
+    std::thread([this, ctx, generation, path = QFile::encodeName(device)] {
+        ctx->nav = discnav_open(path.constData(), "en", onEvent, onLog, ctx);
+        QMetaObject::invokeMethod(this, [this, ctx, generation] { opened(ctx, generation); }, Qt::QueuedConnection);
+    }).detach();
+}
+
+void DiscNav::opened(NavContext *ctx, unsigned generation)
+{
+    if (generation != m_generation || !ctx->nav) {
+        // closed meanwhile, or not a disc: let it go (off this thread)
+        const bool failed = generation == m_generation;
+        std::thread([ctx] {
+            discnav_close(ctx->nav);
+            delete ctx;
+        }).detach();
+        if (failed)
+            emit openFailed();
+        return;
     }
     {
         std::lock_guard lock(g_router.mutex);
@@ -203,11 +236,11 @@ bool DiscNav::open(const QString &device)
     m_mpv->setStallCheck(false);
     emit activeChanged();
     load();
-    return true;
 }
 
 void DiscNav::close()
 {
+    m_generation++; // an open still running is dropped when it ends
     if (!m_ctx)
         return;
     NavContext *ctx = m_ctx;
@@ -241,6 +274,7 @@ bool DiscNav::action(const QString &name)
         { "right", DISCNAV_RIGHT }, { "activate", DISCNAV_ACTIVATE }, { "menu", DISCNAV_ROOT_MENU },
         { "title", DISCNAV_TITLE_MENU }, { "back", DISCNAV_GO_UP },
         { "previous", DISCNAV_PREV_CHAPTER }, { "next", DISCNAV_NEXT_CHAPTER },
+        { "popup", DISCNAV_POPUP_MENU },
     };
     const auto it = actions.constFind(name);
     if (!m_ctx || it == actions.cend())
@@ -290,14 +324,19 @@ QVariantList streamList(NavContext *ctx, discnav_stream_type_t type)
         }
         if (type == DISCNAV_AUDIO) {
             static const QHash<QString, QString> formats = {
-                { "ac3", "Dolby Digital" }, { "dts", "DTS" }, { "lpcm", "PCM" }, { "mpeg", "MPEG" }, { "sdds", "SDDS" },
+                { "ac3", "Dolby Digital" }, { "eac3", "Dolby Digital Plus" }, { "truehd", "Dolby TrueHD" },
+                { "dts", "DTS" }, { "dtshd", "DTS-HD" }, { "lpcm", "PCM" }, { "mpeg", "MPEG" }, { "sdds", "SDDS" },
             };
-            const QString layout = st.channels == 1 ? QStringLiteral("Mono")
+            // a Blu-ray only says mono, stereo or more (0)
+            const QString layout = st.channels == 0 ? QString()
+                                 : st.channels == 1 ? QStringLiteral("Mono")
                                  : st.channels == 2 ? QStringLiteral("Stereo")
                                  : st.channels == 6 ? QStringLiteral("5.1")
                                  : st.channels == 8 ? QStringLiteral("7.1")
                                  : QStringLiteral("%1ch").arg(st.channels);
-            parts << QStringLiteral("%1 %2").arg(formats.value(QString::fromLatin1(st.format)), layout).trimmed();
+            const QString audio = QStringLiteral("%1 %2").arg(formats.value(QString::fromLatin1(st.format)), layout).trimmed();
+            if (!audio.isEmpty())
+                parts << audio;
         }
         list.append(QVariantMap{ { "id", st.index }, { "label", parts.join(QStringLiteral("  ·  ")) },
                                  { "selected", st.selected } });
@@ -329,7 +368,8 @@ bool DiscNav::selectStream(const QString &type, const QVariant &id)
 void DiscNav::load()
 {
     m_loadPending = true;
-    m_mpv->loadFile(QStringLiteral("discnav://"), kSegmentOptions);
+    m_mpv->loadFile(QStringLiteral("discnav://"),
+                    discnav_format(m_ctx->nav) == DISCNAV_BLURAY ? kBdSegmentOptions : kDvdSegmentOptions);
 }
 
 void DiscNav::onNavEvent(int event)
@@ -452,15 +492,25 @@ void DiscNav::scheduleOverlay()
     QTimer::singleShot(0, this, &DiscNav::renderOverlay);
 }
 
-// The menu graphics are composited at the video's storage size (720x480)
-// and scaled by mpv onto the video's rectangle, like the picture.
+// The menu graphics are composited at the video's storage size (DVD:
+// 720x480) or their own (Blu-ray: 1920x1080) and scaled by mpv onto the
+// video's rectangle, like the picture; a Blu-ray menu may have no video
+// behind it, then a 16:9 frame in the window.
 void DiscNav::renderOverlay()
 {
     m_overlayPending = false;
     if (!m_ctx || !m_mpv)
         return;
-    const QSize frame = m_mpv->videoSize();
-    if (frame.isEmpty() || m_mpv->videoRect().isEmpty())
+    int w = 0, h = 0;
+    const bool ownSize = discnav_overlay_size(m_ctx->nav, &w, &h);
+    const QSize frame = ownSize ? QSize(w, h) : m_mpv->videoSize();
+    QRect rect = m_mpv->videoRect();
+    if (ownSize && rect.isEmpty() && !m_mpv->osdSize().isEmpty()) {
+        const QSize fit = frame.scaled(m_mpv->osdSize(), Qt::KeepAspectRatio);
+        rect = QRect(QPoint((m_mpv->osdSize().width() - fit.width()) / 2,
+                            (m_mpv->osdSize().height() - fit.height()) / 2), fit);
+    }
+    if (frame.isEmpty() || rect.isEmpty())
         return;
     QImage rgba(frame, QImage::Format_RGBA8888);
     if (!discnav_render_overlay(m_ctx->nav, rgba.bits(), frame.width(), frame.height())) {
@@ -469,9 +519,9 @@ void DiscNav::renderOverlay()
         m_overlayShown = false;
         return;
     }
-    qCDebug(lcNav, "overlay %dx%d onto %d,%d %dx%d", frame.width(), frame.height(), m_mpv->videoRect().x(),
-            m_mpv->videoRect().y(), m_mpv->videoRect().width(), m_mpv->videoRect().height());
+    qCDebug(lcNav, "overlay %dx%d onto %d,%d %dx%d", frame.width(), frame.height(), rect.x(), rect.y(),
+            rect.width(), rect.height());
     const QImage bgra = rgba.convertToFormat(QImage::Format_ARGB32_Premultiplied);
-    m_mpv->setOverlay(kMenuOverlay, m_encoder.encode(bgra, m_mpv->transfer()), m_mpv->videoRect());
+    m_mpv->setOverlay(kMenuOverlay, m_encoder.encode(bgra, m_mpv->transfer()), rect);
     m_overlayShown = true;
 }

@@ -22,10 +22,10 @@ FocusScope {
         player.play({ url: url, label: url.split("/").pop() })
     }
 
-    // --play-menu: a DVD image or folder through its menus
+    // --play-menu: a disc, image or folder through its menus
     function playMenu(path) {
         setup.visible = false
-        player.playMenu({ device: path, kind: "dvd", label: path.split("/").pop() })
+        player.playMenu({ device: path, label: path.split("/").pop() })
     }
 
     // scale the 10-foot UI from a 1080p design size
