@@ -401,6 +401,9 @@ Status (2026-10-30):
   before the track is selected, so each title segment now starts with an
   empty subpicture announcing the VM's stream. Verified with a forced
   orange/cyan subtitle in the fixture's Title 2 (`tools/make-test-dvd.sh`).
+- ✅ Tests: `tools/test-dvd-menus.py` drives the app through the test DVD
+  (11 checks: highlights, subtitle colours, title end, motion menu,
+  chapter skip, menu call, B home) from screenshots and the nav log.
 
 ### Phase 3 — Blu-ray navigation and BD-J menus (UHD too)
 - Blu-ray navigation mode: libbluray's `bd_play()` + `bd_read_ext()`
