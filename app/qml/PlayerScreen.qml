@@ -35,16 +35,17 @@ FocusScope {
         loadEntry(i || 0, start || 0)
     }
 
-    // the disc from its start, menus and all (DVD, Blu-ray); opening
-    // continues in the background (onOpenFailed)
-    function playMenu(d) {
+    // the disc from its start, menus and all (DVD, Blu-ray), read from path
+    // (default: the device); opening continues in the background
+    // (onOpenFailed)
+    function playMenu(d, path) {
         drive = d
         queue = [{ url: "discnav://", title: displayTitle }]
         index = 0
         active = true
         opening = true
         forceActiveFocus()
-        nav.open(d.device)
+        nav.open(path || d.device)
     }
 
     function showNotice(message) {

@@ -33,6 +33,35 @@ FocusScope {
     Binding { target: Theme; property: "buttonStyle"; value: root.gamepad.style }
 
     DiscMonitor { id: discs }
+
+    // A disc through its menus. A Blu-ray's are opened from its mount
+    // (DiscMonitor.ensureMounted); if it won't mount, the film plays.
+    property var menuDrive: null
+    function openMenus(drive) {
+        if (drive.kind !== "bluray") {
+            player.playMenu(drive)
+            return
+        }
+        menuDrive = drive
+        discs.ensureMounted(drive)
+    }
+    Connections {
+        target: discs
+        function onMounted(device, mountPoint) {
+            const d = root.menuDrive
+            if (!d || d.device !== device)
+                return
+            root.menuDrive = null
+            player.playMenu(d, mountPoint)
+        }
+        function onMountFailed(device) {
+            const d = root.menuDrive
+            if (!d || d.device !== device)
+                return
+            root.menuDrive = null
+            player.play(d)
+        }
+    }
     DiscNav { id: nav; mpv: root.mpv }
     SystemCheck { id: system }
     // a newly inserted disc lets MakeMKV say whether the drive reads 4K UHD
@@ -95,11 +124,12 @@ FocusScope {
             const episodes = drive.disc && drive.disc.episodes ? drive.disc.episodes : []
             const extras = drive.disc && drive.disc.extras ? drive.disc.extras : []
             const resume = Resume.get(drive.contentHash || drive.label)
-            // with DVD menus off, the disc's page still offers its menu
-            if (episodes.length > 1 || extras.length || resume || (drive.kind === "dvd" && !settings.discMenus))
+            // with disc menus off, the disc's page still offers its menu
+            const menus = drive.kind === "dvd" || drive.kind === "bluray"
+            if (episodes.length > 1 || extras.length || resume || (menus && !settings.discMenus))
                 discScreen.open(drive)
-            else if (drive.kind === "dvd" && settings.discMenus)
-                player.playMenu(drive) // a DVD starts with its own menus
+            else if (menus && settings.discMenus)
+                root.openMenus(drive) // a disc starts with its own menus
             else
                 player.play(drive)
         }
@@ -124,7 +154,7 @@ FocusScope {
         }
         onMenuRequested: {
             visible = false
-            player.playMenu(drive)
+            root.openMenus(drive)
         }
         onExtraRequested: extra => {
             visible = false

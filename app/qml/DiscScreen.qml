@@ -82,7 +82,7 @@ FocusScope {
                              + Theme.formatTime(resume.position) })
         if (series) {
             r.push({ label: "Play all", detail: episodes.length + " episodes", index: 0, start: 0 })
-            if (drive && drive.kind === "dvd")
+            if (drive && (drive.kind === "dvd" || drive.kind === "bluray"))
                 r.push({ label: "Disc menu", detail: "", menu: true })
             if (extras.length)
                 r.push({ label: "Extras", detail: extras.length + "", extras: true })
@@ -91,7 +91,7 @@ FocusScope {
                 watching: !!resume && resume.index === i }))
         } else {
             r.push({ label: resume ? "Play from the beginning" : "Play", detail: "", index: 0, start: 0 })
-            if (drive && drive.kind === "dvd")
+            if (drive && (drive.kind === "dvd" || drive.kind === "bluray"))
                 r.push({ label: "Disc menu", detail: "", menu: true })
             if (extras.length)
                 r.push({ label: "Extras", detail: extras.length + "", extras: true })

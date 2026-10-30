@@ -178,6 +178,8 @@ void DiscMonitor::refresh()
             d["hasMedia"] = drive.value("MediaAvailable").toBool();
             d["kind"] = kind;
             d["label"] = block.label;
+            d["block"] = block.path;
+            d["mountPoint"] = block.mountPoint;
 
             Identity id;
             if ((kind == "bluray" || kind == "dvd") && !block.path.isEmpty()) {
@@ -241,6 +243,36 @@ void DiscMonitor::mount(const QString &blockPath)
             m_identities[blockPath].pending = false;
         }
         scheduleRefresh(); // the new mount point arrives with the refresh
+    });
+}
+
+void DiscMonitor::ensureMounted(const QVariantMap &drive)
+{
+    const QString device = drive.value("device").toString();
+    const QString mountPoint = drive.value("mountPoint").toString();
+    const QString blockPath = drive.value("block").toString();
+    if (!mountPoint.isEmpty() || blockPath.isEmpty()) {
+        QMetaObject::invokeMethod(this, [this, device, mountPoint] {
+            if (mountPoint.isEmpty())
+                emit mountFailed(device);
+            else
+                emit mounted(device, mountPoint);
+        }, Qt::QueuedConnection);
+        return;
+    }
+    QDBusMessage msg = QDBusMessage::createMethodCall(kService, blockPath, kFsIface, "Mount");
+    msg << QVariantMap{ { "options", QStringLiteral("ro") } };
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(msg), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, device](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        QDBusPendingReply<QString> reply = *w;
+        if (reply.isError()) {
+            qWarning("udisks: mounting %s failed: %s", qPrintable(device), qPrintable(reply.error().message()));
+            emit mountFailed(device);
+        } else {
+            emit mounted(device, reply.value());
+        }
+        scheduleRefresh();
     });
 }
 

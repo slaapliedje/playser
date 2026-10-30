@@ -97,10 +97,10 @@ FocusScope {
         },
         {
             ok: null,
-            title: "DVD menus",
+            title: "Disc menus",
             text: root.discMenus
-                ? "On: DVDs start with their own menus, as on a DVD player."
-                : "Off: a DVD's page opens instead, where Play starts the main feature and Disc menu its menus."
+                ? "On: DVDs and Blu-rays start with their own menus, as on a player. If a Blu-ray's menus can't run, the film plays."
+                : "Off: a disc's page opens instead, where Play starts the main feature and Disc menu its menus."
         },
     ]
 
@@ -163,7 +163,7 @@ FocusScope {
         }
     }
 
-    // Check again | Passthrough | DVD menus | Done, left/right to choose
+    // Check again | Passthrough | Disc menus | Done, left/right to choose
     ListView {
         id: buttons
         anchors { left: parent.left; bottom: parent.bottom; margins: Theme.margin }
@@ -187,7 +187,7 @@ FocusScope {
                 id: label
                 anchors.centerIn: parent
                 text: modelData === "passthrough" ? (root.passthrough ? "Passthrough: On" : "Passthrough: Off")
-                    : modelData === "menus" ? (root.discMenus ? "DVD menus: On" : "DVD menus: Off")
+                    : modelData === "menus" ? (root.discMenus ? "Disc menus: On" : "Disc menus: Off")
                     : modelData
                 color: Theme.text
                 font.pixelSize: Theme.fontMedium

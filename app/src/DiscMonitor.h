@@ -15,7 +15,8 @@
 //   path, model, device ("/dev/sr0"), hasMedia, kind ("dvd"|"bluray"|"cd"|
 //   "none"), label, url (mpv URL to play the disc), options (mpv options),
 //   identifying (still working out which disc it is), disc (DiscIndex entry,
-//   empty if unknown), contentHash.
+//   empty if unknown), contentHash, block (udisks object path), mountPoint
+//   ("" if not mounted).
 //
 // To identify a DVD or Blu-ray it is mounted read-only (as a desktop would)
 // and looked up in DiscIndex. A known Blu-ray's url then names its main
@@ -35,10 +36,16 @@ public:
     bool available() const { return m_available; }
 
     Q_INVOKABLE void refresh();
+    // Mounts the drive's disc read-only if it isn't, then mounted() (or
+    // mountFailed()). Blu-ray menus need it: libbluray's BD-J can't read
+    // everything a disc's Java wants straight from the device (UDF).
+    Q_INVOKABLE void ensureMounted(const QVariantMap &drive);
 
 signals:
     void drivesChanged();
     void availableChanged();
+    void mounted(const QString &device, const QString &mountPoint);
+    void mountFailed(const QString &device);
 
 private slots:
     void onInterfacesChanged();
