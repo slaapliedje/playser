@@ -12,6 +12,16 @@ find_package(ZLIB REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
+# UDF reader (vendored, LGPL): disc files without mounting the disc
+add_library(udfread STATIC
+    third_party/libudfread/src/udfread.c
+    third_party/libudfread/src/ecma167.c
+    third_party/libudfread/src/default_blockinput.c)
+target_compile_definitions(udfread PRIVATE
+    _ISOC99_SOURCE _POSIX_C_SOURCE=200809L HAVE_UNISTD_H HAVE_FCNTL_H HAVE_PTHREAD_H)
+target_include_directories(udfread PUBLIC third_party/libudfread/src)
+set_target_properties(udfread PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 qt_add_executable(playser src/main.cpp)
 
 # must precede qt_add_qml_module, which reads it when generating qmldir
@@ -27,6 +37,7 @@ qt_add_qml_module(playser
         src/ScreenSaverInhibitor.h src/ScreenSaverInhibitor.cpp
         src/DiscMonitor.h src/DiscMonitor.cpp
         src/DiscIndex.h src/DiscIndex.cpp
+        src/DiscFs.h src/DiscFs.cpp
         src/SystemCheck.h src/SystemCheck.cpp
         src/Gamepad.h src/Gamepad.cpp
     QML_FILES
@@ -57,12 +68,13 @@ qt_add_resources(playser fonts
     FILES data/fonts/InterVariable.ttf)
 
 target_link_libraries(playser PRIVATE
-    Qt6::Quick Qt6::DBus PkgConfig::MPV PkgConfig::SDL3 ZLIB::ZLIB)
+    Qt6::Quick Qt6::DBus PkgConfig::MPV PkgConfig::SDL3 ZLIB::ZLIB udfread)
 
 include(GNUInstallDirs)
 install(TARGETS playser RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES data/THEDISCDB-LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/playser)
 install(FILES data/fonts/INTER-LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/playser)
+install(FILES third_party/libudfread/COPYING DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/playser RENAME LIBUDFREAD-LICENSE)
 install(FILES data/io.github.slaapliedje.Playser.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES data/io.github.slaapliedje.Playser.metainfo.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
 install(FILES data/icons/io.github.slaapliedje.Playser.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)

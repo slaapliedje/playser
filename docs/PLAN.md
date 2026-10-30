@@ -179,8 +179,14 @@ Status (2026-10-28), `app/`:
   featurettes, trailers, deleted scenes... in disc order); an extra plays
   without touching the film's resume point and returns to the list. Discs
   with extras now open the disc screen on Play. Verified with the 14
-  extras of *Masters of the Universe*. Still to do: a
-  libudfread reader so discs needn't be mounted. Original notes: (https://thediscdb.com, data repo
+  extras of *Masters of the Universe*. No mounting
+  (2026-10-29): discs are read straight from the drive with libudfread
+  (vendored in `app/third_party/libudfread`, LGPL) behind `DiscFs`, which
+  also reads a mounted directory; the disc is mounted through udisks only
+  if the device can't be read. The art is copied to the cache
+  (`disc-files/`). Verified: same hash and main feature for the UHD on the
+  desktop; on the box (Flatpak) BTTF identified and played from the
+  unmounted drive; the synthetic DVD reads the same as folder and ISO. Original notes: (https://thediscdb.com, data repo
   `TheDiscDb/data`, MIT; ~6,150 discs as of 2026-10-29). Each disc record
   has a `ContentHash` and labels playlists `MainMovie` / `Extra` /
   `Episode`. The hash needs no decryption: MD5 over the sizes of

@@ -47,7 +47,9 @@ private slots:
 
 private:
     struct Identity {
-        QString mountPoint;
+        QString discId;     // which disc (label, UUID, size): a new one is identified
+        QString mountPoint; // read through when the device couldn't be
+        bool needsMount = false;
         bool pending = true;
         QString contentHash;
         QVariantMap disc;
@@ -55,7 +57,8 @@ private:
 
     void scheduleRefresh();
     void mount(const QString &blockPath);
-    void identify(const QString &blockPath, const QString &mountPoint);
+    void identify(const QString &blockPath, const QString &device, const QString &discId,
+                  const QString &mountPoint);
 
     QHash<QString, Identity> m_identities; // by block object path
     QSet<QString> m_mountRequested;

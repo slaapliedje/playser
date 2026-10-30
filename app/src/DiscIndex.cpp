@@ -1,4 +1,5 @@
 #include "DiscIndex.h"
+#include "DiscFs.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -57,20 +58,29 @@ const QJsonObject &discs()
     return index;
 }
 
+// files in a directory with one of these extensions, any case
+QStringList filesWithSuffix(DiscFs &fs, const QString &dir, const QStringList &suffixes)
+{
+    QStringList names = fs.files(dir);
+    names.removeIf([&suffixes](const QString &n) {
+        return !suffixes.contains(QFileInfo(n).suffix(), Qt::CaseInsensitive);
+    });
+    return names;
+}
+
 } // namespace
 
-QString DiscIndex::contentHash(const QString &discRoot)
+QString DiscIndex::contentHash(DiscFs &fs)
 {
-    QDir root(discRoot);
-    QDir dir;
+    QString dir;
     QStringList names;
     // UDF names are case-sensitive in principle; discs use upper case
-    if (root.exists("BDMV/STREAM")) {
-        dir = QDir(root.filePath("BDMV/STREAM"));
-        names = dir.entryList({ "*.m2ts", "*.M2TS" }, QDir::Files);
-    } else if (root.exists("VIDEO_TS")) {
-        dir = QDir(root.filePath("VIDEO_TS"));
-        names = dir.entryList({ "*.VOB", "*.IFO", "*.BUP", "*.vob", "*.ifo", "*.bup" }, QDir::Files);
+    if (fs.isDir("BDMV/STREAM")) {
+        dir = QStringLiteral("BDMV/STREAM/");
+        names = filesWithSuffix(fs, dir, { "m2ts" });
+    } else if (fs.isDir("VIDEO_TS")) {
+        dir = QStringLiteral("VIDEO_TS/");
+        names = filesWithSuffix(fs, dir, { "vob", "ifo", "bup" });
     }
     if (names.isEmpty())
         return {};
@@ -79,7 +89,7 @@ QString DiscIndex::contentHash(const QString &discRoot)
               [](const QString &a, const QString &b) { return a.toUtf8() < b.toUtf8(); });
     QCryptographicHash md5(QCryptographicHash::Md5);
     for (const QString &name : names) {
-        const qint64 size = QFileInfo(dir.filePath(name)).size();
+        const qint64 size = fs.size(dir + name);
         char le[8];
         qToLittleEndian<qint64>(size, le);
         md5.addData(QByteArrayView(le, 8));
@@ -107,16 +117,13 @@ QVariantMap DiscIndex::lookup(const QString &contentHash)
     return m;
 }
 
-QVariantList DiscIndex::playlists(const QString &discRoot)
+QVariantList DiscIndex::playlists(DiscFs &fs)
 {
     QVariantList result;
-    const QDir dir(QDir(discRoot).filePath("BDMV/PLAYLIST"));
-    QStringList names = dir.entryList({ "*.mpls", "*.MPLS" }, QDir::Files, QDir::Name);
+    QStringList names = filesWithSuffix(fs, "BDMV/PLAYLIST", { "mpls" });
+    names.sort();
     for (const QString &name : names) {
-        QFile f(dir.filePath(name));
-        if (!f.open(QIODevice::ReadOnly) || f.size() > (1 << 20))
-            continue;
-        const QByteArray b = f.readAll();
+        const QByteArray b = fs.read("BDMV/PLAYLIST/" + name, 1 << 20);
         const auto u16 = [&b](qsizetype at) { return at + 2 <= b.size() ? qFromBigEndian<quint16>(b.constData() + at) : 0; };
         const auto u32 = [&b](qsizetype at) { return at + 4 <= b.size() ? qFromBigEndian<quint32>(b.constData() + at) : 0u; };
         if (!b.startsWith("MPLS"))
@@ -139,14 +146,11 @@ QVariantList DiscIndex::playlists(const QString &discRoot)
     return result;
 }
 
-QVariantList DiscIndex::dvdTitles(const QString &discRoot)
+QVariantList DiscIndex::dvdTitles(DiscFs &fs)
 {
-    const QDir dir(QDir(discRoot).filePath("VIDEO_TS"));
-    const auto ifo = [&dir](const QString &name) {
-        QFile f(dir.filePath(name));
-        if (!f.exists())
-            f.setFileName(dir.filePath(name.toLower()));
-        return f.open(QIODevice::ReadOnly) && f.size() < (1 << 24) ? f.readAll() : QByteArray();
+    const auto ifo = [&fs](const QString &name) {
+        const QByteArray b = fs.read("VIDEO_TS/" + name);
+        return !b.isEmpty() ? b : fs.read("VIDEO_TS/" + name.toLower());
     };
     const auto u16 = [](const QByteArray &b, qsizetype at) { return at + 2 <= b.size() ? qFromBigEndian<quint16>(b.constData() + at) : 0; };
     const auto u32 = [](const QByteArray &b, qsizetype at) { return at + 4 <= b.size() ? qFromBigEndian<quint32>(b.constData() + at) : 0u; };
@@ -199,10 +203,10 @@ QVariantList DiscIndex::dvdTitles(const QString &discRoot)
     return titles;
 }
 
-void DiscIndex::resolveTitles(QVariantMap &disc, const QString &discRoot)
+void DiscIndex::resolveTitles(QVariantMap &disc, DiscFs &fs)
 {
     QVariantList items = disc.value("items").toList();
-    const bool dvd = QDir(discRoot).exists("VIDEO_TS") && !QDir(discRoot).exists("BDMV");
+    const bool dvd = fs.isDir("VIDEO_TS") && !fs.isDir("BDMV");
 
     // Blu-ray: one-clip playlists by clip
     QHash<QString, QString> playlistOfClip;
@@ -210,10 +214,10 @@ void DiscIndex::resolveTitles(QVariantMap &disc, const QString &discRoot)
     QMultiHash<int, QVariantMap> titlesOfVts;
     QSet<int> taken;
     if (dvd) {
-        for (const QVariant &v : dvdTitles(discRoot))
+        for (const QVariant &v : dvdTitles(fs))
             titlesOfVts.insert(v.toMap().value("vts").toInt(), v.toMap());
     } else {
-        for (const QVariant &v : playlists(discRoot)) {
+        for (const QVariant &v : playlists(fs)) {
             const QVariantMap pl = v.toMap();
             const QStringList clips = pl.value("clips").toStringList();
             if (clips.size() == 1 && !playlistOfClip.contains(clips.first()))
@@ -277,25 +281,27 @@ void DiscIndex::resolveTitles(QVariantMap &disc, const QString &discRoot)
     disc.insert("extras", extras);
 }
 
-QVariantMap DiscIndex::discMeta(const QString &discRoot)
+QVariantMap DiscIndex::discMeta(DiscFs &fs)
 {
     QVariantMap meta;
     // index.bdmv's version: "0300" is a 4K UHD disc, "0100"/"0200" Blu-ray
-    QFile index(QDir(discRoot).filePath("BDMV/index.bdmv"));
-    if (index.open(QIODevice::ReadOnly) && index.read(8) == "INDX0300")
+    if (fs.read("BDMV/index.bdmv", 1 << 20).startsWith("INDX0300"))
         meta.insert("format", QStringLiteral("UHD"));
 
-    const QDir dir(QDir(discRoot).filePath("BDMV/META/DL"));
-    QStringList files = dir.entryList({ "bdmt_*.xml", "BDMT_*.XML" }, QDir::Files);
+    const QString dir = QStringLiteral("BDMV/META/DL/");
+    QStringList files = filesWithSuffix(fs, dir, { "xml" });
+    files.removeIf([](const QString &n) { return !n.startsWith("bdmt_", Qt::CaseInsensitive); });
     if (files.isEmpty())
         return meta;
+    files.sort();
     const int english = files.indexOf(QRegularExpression("bdmt_eng\\.xml", QRegularExpression::CaseInsensitiveOption));
-    QFile file(dir.filePath(files.value(qMax(0, english))));
-    if (!file.open(QIODevice::ReadOnly))
+    const QByteArray file = fs.read(dir + files.value(qMax(0, english)), 1 << 20);
+    if (file.isEmpty())
         return meta;
 
+    QString art;
     qint64 artSize = 0;
-    QXmlStreamReader xml(&file);
+    QXmlStreamReader xml(file);
     while (!xml.atEnd()) {
         if (xml.readNext() != QXmlStreamReader::StartElement)
             continue;
@@ -304,12 +310,19 @@ QVariantMap DiscIndex::discMeta(const QString &discRoot)
             if (!title.isEmpty())
                 meta.insert("title", title);
         } else if (xml.name() == u"thumbnail") {
-            const QFileInfo art(dir.filePath(xml.attributes().value("href").toString()));
-            if (art.isFile() && art.size() > artSize) {
-                artSize = art.size();
-                meta.insert("art", art.filePath());
+            const QString href = dir + xml.attributes().value("href").toString();
+            const qint64 size = fs.size(href);
+            if (size > artSize) {
+                artSize = size;
+                art = href;
             }
         }
+    }
+    // a path QML can show: the file itself, or a copy when not mounted
+    if (!art.isEmpty()) {
+        const QString local = fs.localPath(art);
+        if (!local.isEmpty())
+            meta.insert("art", local);
     }
     return meta;
 }

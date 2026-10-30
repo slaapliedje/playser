@@ -9,6 +9,7 @@
 #include <QPointer>
 #include <QThreadPool>
 
+#include "DiscFs.h"
 #include "DiscIndex.h"
 
 namespace {
@@ -137,8 +138,8 @@ void DiscMonitor::refresh()
         }
         const ObjectMap objects = reply.value();
 
-        // block device, label, object path and mount point per drive
-        struct Block { QString device, label, path, mountPoint; };
+        // block device, label, object path, mount point and which disc per drive
+        struct Block { QString device, label, path, mountPoint, discId; };
         QHash<QString, Block> blocks;
         for (auto it = objects.cbegin(); it != objects.cend(); ++it) {
             const QVariantMap block = it.value().value(kBlockIface);
@@ -151,7 +152,9 @@ void DiscMonitor::refresh()
             if (!blocks.contains(drive))
                 blocks.insert(drive, { byteString(block.value("Device")),
                                        block.value("IdLabel").toString(), it.key().path(),
-                                       firstMountPoint(it.value().value(kFsIface).value("MountPoints")) });
+                                       firstMountPoint(it.value().value(kFsIface).value("MountPoints")),
+                                       QStringList{ block.value("IdLabel").toString(), block.value("IdUUID").toString(),
+                                                    block.value("Size").toString() }.join('|') });
         }
 
         QVariantList drives;
@@ -180,10 +183,13 @@ void DiscMonitor::refresh()
             if ((kind == "bluray" || kind == "dvd") && !block.path.isEmpty()) {
                 present.insert(block.path);
                 id = m_identities.value(block.path);
-                if (block.mountPoint.isEmpty())
+                // read from the device; mounted only if that fails
+                if (!m_identities.contains(block.path) || id.discId != block.discId)
+                    identify(block.path, device, block.discId, QString());
+                else if (id.needsMount && block.mountPoint.isEmpty())
                     mount(block.path);
-                else if (id.mountPoint != block.mountPoint)
-                    identify(block.path, block.mountPoint);
+                else if (id.needsMount && id.mountPoint != block.mountPoint)
+                    identify(block.path, device, block.discId, block.mountPoint);
                 id = m_identities.value(block.path);
                 d["identifying"] = id.pending;
                 d["disc"] = id.disc;
@@ -223,7 +229,6 @@ void DiscMonitor::mount(const QString &blockPath)
     if (m_mountRequested.contains(blockPath))
         return;
     m_mountRequested.insert(blockPath);
-    m_identities[blockPath] = Identity{};
     QDBusMessage msg = QDBusMessage::createMethodCall(kService, blockPath, kFsIface, "Mount");
     msg << QVariantMap{ { "options", QStringLiteral("ro") } };
     auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(msg), this);
@@ -239,33 +244,60 @@ void DiscMonitor::mount(const QString &blockPath)
     });
 }
 
-void DiscMonitor::identify(const QString &blockPath, const QString &mountPoint)
+void DiscMonitor::identify(const QString &blockPath, const QString &device, const QString &discId,
+                           const QString &mountPoint)
 {
     Identity &id = m_identities[blockPath];
+    const bool needsMount = id.discId == discId && id.needsMount;
     id = Identity{};
+    id.discId = discId;
     id.mountPoint = mountPoint;
-    // the first directory read can spin the disc up: keep it off the GUI thread
+    id.needsMount = needsMount;
+    if (!needsMount)
+        m_mountRequested.remove(blockPath); // a new disc may need its own mount
+    // the first read can spin the disc up: keep it off the GUI thread
     QPointer<DiscMonitor> self(this);
-    QThreadPool::globalInstance()->start([self, blockPath, mountPoint] {
-        const QString hash = DiscIndex::contentHash(mountPoint);
+    QThreadPool::globalInstance()->start([self, blockPath, device, discId, mountPoint] {
+        // straight from the drive (UDF), so the disc needn't be mounted;
+        // through the mount when that's been needed
+        const std::unique_ptr<DiscFs> fs = DiscFs::open(mountPoint.isEmpty() ? device : mountPoint);
+        if (!fs) {
+            QMetaObject::invokeMethod(self, [self, blockPath, device, discId, mountPoint] {
+                if (!self || self->m_identities.value(blockPath).discId != discId)
+                    return;
+                Identity &id = self->m_identities[blockPath];
+                if (!mountPoint.isEmpty()) { // mounted and still unreadable
+                    qWarning("disc %s: can't read %s", qPrintable(device), qPrintable(mountPoint));
+                    id.pending = false;
+                    self->refresh();
+                    return;
+                }
+                qInfo("disc %s: can't read the device, reading it mounted", qPrintable(device));
+                id.needsMount = true;
+                self->refresh();
+            });
+            return;
+        }
+        const QString hash = DiscIndex::contentHash(*fs);
         QVariantMap disc = hash.isEmpty() ? QVariantMap() : DiscIndex::lookup(hash);
         const bool known = !disc.isEmpty();
         if (known)
-            DiscIndex::resolveTitles(disc, mountPoint);
+            DiscIndex::resolveTitles(disc, *fs);
         // not in the catalogue: the title the disc gives itself (Blu-ray);
         // its art either way
-        const QVariantMap meta = DiscIndex::discMeta(mountPoint);
+        const QVariantMap meta = DiscIndex::discMeta(*fs);
         if (!known && meta.contains("title"))
             disc.insert("title", meta.value("title"));
         if (meta.contains("art"))
             disc.insert("art", meta.value("art"));
         if (!disc.contains("format") && meta.contains("format"))
             disc.insert("format", meta.value("format"));
-        QMetaObject::invokeMethod(self, [self, blockPath, mountPoint, hash, disc, known] {
+        const QString source = fs->source();
+        QMetaObject::invokeMethod(self, [self, blockPath, discId, mountPoint, source, hash, disc, known] {
             if (!self)
                 return;
             Identity &id = self->m_identities[blockPath];
-            if (id.mountPoint != mountPoint) // ejected or remounted meanwhile
+            if (id.discId != discId || id.mountPoint != mountPoint) // changed meanwhile
                 return;
             id.pending = false;
             id.contentHash = hash;
@@ -275,7 +307,7 @@ void DiscMonitor::identify(const QString &blockPath, const QString &mountPoint)
                 : title.isEmpty() ? QStringLiteral("(not in index)")
                                   : QStringLiteral("(not in index; disc says \"%1\")").arg(title);
             const QString main = disc.value("mainUrl").toString();
-            qInfo("disc %s: %s %s%s", qPrintable(mountPoint), qPrintable(hash), qPrintable(what),
+            qInfo("disc %s: %s %s%s", qPrintable(source), qPrintable(hash), qPrintable(what),
                   main.isEmpty() ? "" : qPrintable(", main feature " + main));
             self->refresh();
         });
