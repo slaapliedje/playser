@@ -12,6 +12,8 @@
 namespace {
 
 constexpr int kMinFrameMs = 33;
+// above the disc's menu graphics (DiscNav, overlay 0)
+constexpr int kUiOverlay = 1;
 
 bool fullyTransparent(const QImage &img)
 {
@@ -119,7 +121,7 @@ void UiRenderer::render()
     m_sent = m_image;
     m_sentTransfer = transfer;
     if (fullyTransparent(m_image))
-        m_mpv->setOverlay(0, QImage());
+        m_mpv->setOverlay(kUiOverlay, QImage());
     else
-        m_mpv->setOverlay(0, m_encoder.encode(m_image, transfer));
+        m_mpv->setOverlay(kUiOverlay, m_encoder.encode(m_image, transfer));
 }

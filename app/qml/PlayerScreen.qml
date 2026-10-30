@@ -5,6 +5,9 @@ FocusScope {
     id: root
 
     required property Mpv mpv
+    // plays a disc through its menus (playMenu)
+    property DiscNav nav
+    readonly property bool navigating: !!nav && nav.active
     property bool active: false
     property var drive: null
     // what plays, in order: [{ url, title }] (several for a series' episodes);
@@ -32,6 +35,21 @@ FocusScope {
         loadEntry(i || 0, start || 0)
     }
 
+    // the disc from its start, menus and all (DVD)
+    function playMenu(d) {
+        drive = d
+        queue = [{ url: "discnav://", title: displayTitle }]
+        index = 0
+        active = true
+        opening = true
+        forceActiveFocus()
+        if (!nav.open(d.device)) {
+            opening = false
+            active = false
+            closed(false)
+        }
+    }
+
     function loadEntry(i, start) {
         index = i
         opening = true
@@ -40,13 +58,17 @@ FocusScope {
     }
 
     function saveResume() {
-        if (!entry.extra && !opening && root.mpv.duration > 0)
+        // a disc played through its menus has no position to come back to
+        if (!navigating && !entry.extra && !opening && root.mpv.duration > 0)
             Resume.save(resumeKey, { index: index, position: Math.floor(root.mpv.position), title: entry.title || "" })
     }
 
     function close() {
         saveResume()
-        mpv.stop()
+        if (navigating)
+            nav.close() // stops mpv too
+        else
+            mpv.stop()
         active = false
         opening = false
         picker.visible = false
@@ -54,6 +76,8 @@ FocusScope {
     }
 
     function showOsd() {
+        if (navigating && nav.inMenu)
+            return // the disc's menu is the display
         osd.opacity = 1
         hideTimer.restart()
     }
@@ -77,7 +101,7 @@ FocusScope {
             noticeTimer.restart()
         }
         function onEndFile(reason) {
-            if (!root.active)
+            if (!root.active || root.navigating) // DiscNav loads the next segment
                 return
             if (reason === "eof" && root.index + 1 < root.queue.length) {
                 root.loadEntry(root.index + 1, 0)
@@ -105,7 +129,53 @@ FocusScope {
         onTriggered: if (!root.mpv.paused) osd.opacity = 0
     }
 
+    Connections {
+        target: root.nav
+        function onStopped() { if (root.active) root.close() }
+        function onInMenuChanged() {
+            if (root.nav.inMenu)
+                osd.opacity = 0
+            else
+                root.showOsd()
+        }
+    }
+
+    // Through the disc's menus: d-pad and A work its buttons, B goes to the
+    // menu above (or stops at the top); during a title Start opens the disc
+    // menu, View the title menu, and left/right skip chapters (a disc
+    // played this way can't seek).
+    function navKey(key) {
+        if (nav.inMenu) {
+            switch (key) {
+            case Qt.Key_Up: nav.action("up"); return true
+            case Qt.Key_Down: nav.action("down"); return true
+            case Qt.Key_Left: nav.action("left"); return true
+            case Qt.Key_Right: nav.action("right"); return true
+            case Qt.Key_Return:
+            case Qt.Key_Enter: nav.action("activate"); return true
+            case Qt.Key_Escape:
+            case Qt.Key_Back: if (!nav.action("back")) close(); return true
+            }
+        } else {
+            switch (key) {
+            case Qt.Key_Left:
+            case Qt.Key_PageUp: nav.action("previous"); showOsd(); return true
+            case Qt.Key_Right:
+            case Qt.Key_PageDown: nav.action("next"); showOsd(); return true
+            }
+        }
+        switch (key) {
+        case Qt.Key_Menu: nav.action("menu"); return true
+        case Qt.Key_TopMenu: nav.action("title"); return true
+        }
+        return false
+    }
+
     Keys.onPressed: event => {
+        if (navigating && navKey(event.key)) {
+            event.accepted = true
+            return
+        }
         switch (event.key) {
         case Qt.Key_Escape:
         case Qt.Key_Back:
@@ -205,7 +275,9 @@ FocusScope {
                 elide: Text.ElideRight
             }
 
+            // (a disc through its menus plays in segments: no useful times)
             Rectangle {
+                visible: !root.navigating
                 width: parent.width
                 height: 10 * Theme.scale
                 radius: height / 2
@@ -240,15 +312,15 @@ FocusScope {
                     }
                     Text {
                         id: timeText
-                        text: (root.mpv.paused ? "" : "▶  ")
-                              + Theme.formatTime(root.mpv.position) + " / " + Theme.formatTime(root.mpv.duration)
+                        text: (root.mpv.paused ? "" : "▶  ") + (root.navigating ? (root.mpv.paused ? "Paused" : "Playing")
+                              : Theme.formatTime(root.mpv.position) + " / " + Theme.formatTime(root.mpv.duration))
                         color: Theme.text
                         font.pixelSize: Theme.fontSmall
                     }
                 }
                 Text {
                     anchors.right: parent.right
-                    visible: root.mpv.chapters.length > 0
+                    visible: root.mpv.chapters.length > 0 && !root.navigating
                     text: "Chapter " + (root.mpv.chapter + 1) + " / " + root.mpv.chapters.length
                     color: Theme.textDim
                     font.pixelSize: Theme.fontSmall
@@ -257,7 +329,13 @@ FocusScope {
 
             HintBar {
                 textSize: Theme.fontSmall * 0.85
-                hints: [
+                hints: root.navigating ? [
+                    { buttons: ["south"], text: root.mpv.paused ? "Play" : "Pause" },
+                    { buttons: ["dpadH"], text: "Chapter" },
+                    { buttons: ["start"], text: "Disc menu" },
+                    { buttons: ["north"], text: "Audio & subtitles" },
+                    { buttons: ["east"], text: "Stop" },
+                ] : [
                     { buttons: ["south"], text: root.mpv.paused ? "Play" : "Pause" },
                     { buttons: ["dpadH"], text: "Seek" },
                     { buttons: ["lb", "rb"], text: "Chapter" },

@@ -1,0 +1,10 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: discnav
+Description: Disc menus for stream-fed players
+Version: @PROJECT_VERSION@
+Requires: dvdnav
+Libs: -L${libdir} -ldiscnav -lpthread
+Cflags: -I${includedir}/discnav

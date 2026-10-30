@@ -25,7 +25,7 @@ constexpr int kRestartStallSecs = 8;
 // Everything else is unbound: input-default-bindings is off.
 const char *const kForwardedKeys[] = {
     "UP", "DOWN", "LEFT", "RIGHT", "ENTER", "KP_ENTER", "ESC", "BS", "SPACE",
-    "PGUP", "PGDWN", "MENU", "i", "m",
+    "PGUP", "PGDWN", "MENU", "i", "m", "t",
 };
 
 QVariant nodeToVariant(const mpv_node *n)
@@ -220,6 +220,11 @@ void Mpv::load(const QString &url, const QVariantMap &options, double start)
         command({ "loadfile", url });
 }
 
+void Mpv::loadFile(const QString &url, const QStringList &fileOptions)
+{
+    command({ "loadfile", url, "replace", -1, fileOptions.join(',') });
+}
+
 void Mpv::stop()
 {
     command({ "stop" });
@@ -249,18 +254,19 @@ void Mpv::screenshot(const QString &path)
     command({ "screenshot-to-file", path, "window" });
 }
 
-void Mpv::setOverlay(int id, const QImage &image)
+void Mpv::setOverlay(int id, const QImage &image, const QRect &dst)
 {
     OverlaySlot &slot = m_overlays[id];
     if (slot.inFlight) {
         slot.queued = image;
+        slot.queuedDst = dst;
         slot.hasQueued = true;
         return;
     }
-    sendOverlay(id, image);
+    sendOverlay(id, image, dst);
 }
 
-void Mpv::sendOverlay(int id, const QImage &image)
+void Mpv::sendOverlay(int id, const QImage &image, const QRect &dst)
 {
     OverlaySlot &slot = m_overlays[id];
     if (image.isNull() && !slot.shown)
@@ -274,12 +280,12 @@ void Mpv::sendOverlay(int id, const QImage &image)
     }
     Q_ASSERT(image.format() == QImage::Format_ARGB32_Premultiplied);
     slot.shown = true;
-    const QSize display = m_osdSize.isEmpty() ? image.size() : m_osdSize;
+    const QRect to = !dst.isEmpty() ? dst : QRect(QPoint(0, 0), m_osdSize.isEmpty() ? image.size() : m_osdSize);
     // mpv reads (and copies) the memory when the command runs, so `sending`
     // keeps the image alive until the reply arrives
     const QString address = QStringLiteral("&%1").arg(quintptr(image.constBits()));
-    commandAsync({ "overlay-add", id, 0, 0, address, 0, "bgra", image.width(), image.height(),
-                   qlonglong(image.bytesPerLine()), display.width(), display.height() },
+    commandAsync({ "overlay-add", id, to.x(), to.y(), address, 0, "bgra", image.width(), image.height(),
+                   qlonglong(image.bytesPerLine()), to.width(), to.height() },
                  slot.inFlight);
 }
 
@@ -331,7 +337,7 @@ void Mpv::checkAudioStall()
     const bool moving = m_position != m_lastPosition;
     m_lastPosition = m_position;
     // a failed passthrough start never finishes the restart ("seeking")
-    if (moving || !m_loaded || m_paused || m_pausedForCache || !m_hasAudio) {
+    if (moving || !m_stallCheck || !m_loaded || m_paused || m_pausedForCache || !m_hasAudio) {
         m_stalledSecs = 0;
         return;
     }
@@ -393,6 +399,13 @@ void Mpv::processEvents()
                     m_osdSize = size;
                     emit osdSizeChanged();
                 }
+                const int ml = d.value("ml").toInt(), mt = d.value("mt").toInt();
+                const QRect video(ml, mt, size.width() - ml - d.value("mr").toInt(),
+                                  size.height() - mt - d.value("mb").toInt());
+                if (video != m_videoRect) {
+                    m_videoRect = video;
+                    emit videoGeometryChanged();
+                }
                 break;
             }
             case PropSeeking: m_seeking = has && *static_cast<int *>(p->data); break;
@@ -402,6 +415,13 @@ void Mpv::processEvents()
             case PropVideoParams:
             case PropTargetParams: {
                 const QVariantMap params = has ? nodeToVariant(static_cast<mpv_node *>(p->data)).toMap() : QVariantMap();
+                if (ev->reply_userdata == PropVideoParams) {
+                    const QSize size(params.value("w").toInt(), params.value("h").toInt());
+                    if (size != m_videoSize) {
+                        m_videoSize = size;
+                        emit videoGeometryChanged();
+                    }
+                }
                 if (ev->reply_userdata == PropTargetParams && !params.isEmpty()) {
                     const QString display = QStringList{ params.value("primaries").toString(), params.value("gamma").toString(),
                                                          params.value("max-luma").toString() + " nits" }.join(' ');
@@ -433,7 +453,7 @@ void Mpv::processEvents()
                 slot.sending = QImage();
                 if (slot.hasQueued) {
                     slot.hasQueued = false;
-                    sendOverlay(it.key(), std::exchange(slot.queued, QImage()));
+                    sendOverlay(it.key(), std::exchange(slot.queued, QImage()), slot.queuedDst);
                 }
                 break;
             }

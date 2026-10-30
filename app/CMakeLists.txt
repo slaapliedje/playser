@@ -10,6 +10,15 @@ pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
 pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
 find_package(ZLIB REQUIRED)
 
+# libdiscnav (DVD menus, LGPL): installed (the Flatpak builds it as a
+# module), else from the source tree
+pkg_check_modules(DISCNAV IMPORTED_TARGET discnav)
+if(DISCNAV_FOUND)
+    add_library(discnav ALIAS PkgConfig::DISCNAV)
+else()
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../libdiscnav ${CMAKE_CURRENT_BINARY_DIR}/libdiscnav EXCLUDE_FROM_ALL)
+endif()
+
 qt_standard_project_setup(REQUIRES 6.5)
 
 # UDF reader (vendored, LGPL): disc files without mounting the disc
@@ -38,6 +47,7 @@ qt_add_qml_module(playser
         src/DiscMonitor.h src/DiscMonitor.cpp
         src/DiscIndex.h src/DiscIndex.cpp
         src/DiscFs.h src/DiscFs.cpp
+        src/DiscNav.h src/DiscNav.cpp
         src/SystemCheck.h src/SystemCheck.cpp
         src/Gamepad.h src/Gamepad.cpp
     QML_FILES
@@ -68,7 +78,7 @@ qt_add_resources(playser fonts
     FILES data/fonts/InterVariable.ttf)
 
 target_link_libraries(playser PRIVATE
-    Qt6::Quick Qt6::DBus PkgConfig::MPV PkgConfig::SDL3 ZLIB::ZLIB udfread)
+    Qt6::Quick Qt6::DBus PkgConfig::MPV PkgConfig::SDL3 ZLIB::ZLIB udfread discnav)
 
 include(GNUInstallDirs)
 install(TARGETS playser RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

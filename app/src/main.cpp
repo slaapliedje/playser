@@ -56,7 +56,7 @@ static int qtKeyForMpv(const QString &name)
         { "RIGHT", Qt::Key_Right }, { "ENTER", Qt::Key_Return }, { "KP_ENTER", Qt::Key_Return },
         { "ESC", Qt::Key_Escape }, { "BS", Qt::Key_Escape }, { "SPACE", Qt::Key_Space },
         { "PGUP", Qt::Key_PageUp }, { "PGDWN", Qt::Key_PageDown }, { "MENU", Qt::Key_Menu },
-        { "i", Qt::Key_I }, { "m", Qt::Key_Menu },
+        { "i", Qt::Key_I }, { "m", Qt::Key_Menu }, { "t", Qt::Key_TopMenu },
     };
     return keys.value(name);
 }
@@ -70,7 +70,7 @@ static void runScript(UiRenderer *ui, Mpv *mpv, QStringList steps, const QString
         { "up", Qt::Key_Up }, { "down", Qt::Key_Down }, { "left", Qt::Key_Left },
         { "right", Qt::Key_Right }, { "enter", Qt::Key_Return }, { "back", Qt::Key_Escape },
         { "menu", Qt::Key_Menu }, { "info", Qt::Key_I }, { "pgup", Qt::Key_PageUp },
-        { "pgdn", Qt::Key_PageDown }, { "space", Qt::Key_Space },
+        { "pgdn", Qt::Key_PageDown }, { "space", Qt::Key_Space }, { "title", Qt::Key_TopMenu },
     };
     while (!steps.isEmpty()) {
         const QString step = steps.takeFirst().trimmed();
@@ -121,6 +121,7 @@ int main(int argc, char *argv[])
         { "script", "Scripted input for tests.", "steps" },
         { "shot-dir", "Directory for script screenshots.", "dir", "." },
         { "play", "Play a file or URL directly (testing without a drive).", "url" },
+        { "play-menu", "Play a DVD image or folder through its menus (testing).", "path" },
         { "mpv-option", "Set an mpv option, e.g. audio-spdif=ac3 (testing).", "name=value" },
     });
     args.process(app);
@@ -146,6 +147,8 @@ int main(int argc, char *argv[])
     ui.setRootItem(rootItem);
     if (args.isSet("play"))
         QMetaObject::invokeMethod(rootItem, "playUrl", QVariant(args.value("play")));
+    if (args.isSet("play-menu"))
+        QMetaObject::invokeMethod(rootItem, "playMenu", QVariant(args.value("play-menu")));
 
     QObject::connect(&gamepad, &Gamepad::keyPressed, &ui, &UiRenderer::deliverKey);
     gamepad.start();

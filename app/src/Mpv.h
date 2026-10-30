@@ -2,6 +2,7 @@
 
 #include <QImage>
 #include <QObject>
+#include <QRect>
 #include <QSize>
 #include <QTimer>
 #include <QVariant>
@@ -47,14 +48,18 @@ public:
     // Sets options (e.g. bluray-device), then loads url, starting at
     // `start` seconds if > 0 (a per-file option, so it doesn't stick).
     Q_INVOKABLE void load(const QString &url, const QVariantMap &options = {}, double start = 0);
+    // Loads url with per-file options ("name=value"), which apply to this
+    // file only.
+    void loadFile(const QString &url, const QStringList &fileOptions);
     Q_INVOKABLE void stop();
     Q_INVOKABLE void command(const QVariantList &args);
     Q_INVOKABLE void setMpvProperty(const QString &name, const QVariant &value);
 
     // Shows a premultiplied BGRA image (QImage::Format_ARGB32_Premultiplied)
-    // scaled over the whole window; a null image removes the overlay. Only
-    // one overlay-add per id is in flight; newer images replace queued ones.
-    void setOverlay(int id, const QImage &image);
+    // scaled to `dst` (window pixels; empty: the whole window); a null image
+    // removes the overlay. Higher ids are drawn on top. Only one overlay-add
+    // per id is in flight; newer images replace queued ones.
+    void setOverlay(int id, const QImage &image, const QRect &dst = {});
     void screenshot(const QString &path);
 
     bool paused() const { return m_paused; }
@@ -68,6 +73,15 @@ public:
     void setPassthrough(const QString &codecs);
     QVariantList tracks() const { return m_tracks; }
     QSize osdSize() const { return m_osdSize; }
+    // where the video is drawn in the window, and its storage size
+    QRect videoRect() const { return m_videoRect; }
+    QSize videoSize() const { return m_videoSize; }
+    // The audio watchdog takes a clock standing still for a failing audio
+    // output; disc menus stop it on purpose (still frames), so DiscNav turns
+    // it off while it plays.
+    void setStallCheck(bool on) { m_stallCheck = on; }
+    // for registering stream protocols (mpv/stream_cb.h)
+    mpv_handle *handle() const { return m_mpv; }
     Transfer transfer() const { return m_transfer; }
 
 signals:
@@ -81,6 +95,7 @@ signals:
     void tracksChanged();
     void passthroughChanged();
     void osdSizeChanged();
+    void videoGeometryChanged();
     void transferChanged();
     void fileLoaded();
     // audio output stalled playback and was worked around (AudioWatchdog);
@@ -99,10 +114,11 @@ private:
         quint64 inFlight = 0;   // reply id of the pending overlay-add/remove
         QImage sending;         // keeps the bitmap alive until mpv copied it
         QImage queued;
+        QRect queuedDst;
         bool hasQueued = false;
         bool shown = false;
     };
-    void sendOverlay(int id, const QImage &image);
+    void sendOverlay(int id, const QImage &image, const QRect &dst);
     void checkAudioStall();
     void applySpdif(bool on);
     void onAudioOutputBusy();
@@ -118,6 +134,9 @@ private:
     QVariantList m_chapters;
     QVariantList m_tracks;
     QSize m_osdSize;
+    QRect m_videoRect;
+    bool m_stallCheck = true;
+    QSize m_videoSize;
     Transfer m_transfer = Transfer::Sdr;
     bool m_displayOverlays = false; // mpv takes overlays in display colorspace
     QString m_display; // the display's colorspace, as last logged

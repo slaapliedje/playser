@@ -1,4 +1,5 @@
 /*
+ * SPDX-License-Identifier: LGPL-2.1-or-later
  * DVD subpicture (SPU) decoding and menu-highlight compositing.
  *
  * An SPU unit is a 2-bit run-length-encoded bitmap plus a control sequence

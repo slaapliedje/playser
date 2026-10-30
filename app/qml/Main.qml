@@ -16,11 +16,18 @@ FocusScope {
         player.play({ url: url, label: url.split("/").pop() })
     }
 
+    // --play-menu: a DVD image or folder through its menus
+    function playMenu(path) {
+        setup.visible = false
+        player.playMenu({ device: path, kind: "dvd", label: path.split("/").pop() })
+    }
+
     // scale the 10-foot UI from a 1080p design size
     Binding { target: Theme; property: "scale"; value: Math.min(root.width / 1920, root.height / 1080) }
     Binding { target: Theme; property: "buttonStyle"; value: root.gamepad.style }
 
     DiscMonitor { id: discs }
+    DiscNav { id: nav; mpv: root.mpv }
     SystemCheck { id: system }
     // a newly inserted disc lets MakeMKV say whether the drive reads 4K UHD
     Connections {
@@ -79,8 +86,11 @@ FocusScope {
             }
             const episodes = drive.disc && drive.disc.episodes ? drive.disc.episodes : []
             const extras = drive.disc && drive.disc.extras ? drive.disc.extras : []
-            if (episodes.length > 1 || extras.length || Resume.get(drive.contentHash || drive.label))
+            const resume = Resume.get(drive.contentHash || drive.label)
+            if (episodes.length > 1 || extras.length || resume)
                 discScreen.open(drive)
+            else if (drive.kind === "dvd")
+                player.playMenu(drive) // a DVD starts with its own menus
             else
                 player.play(drive)
         }
@@ -99,6 +109,10 @@ FocusScope {
         }
         // watching an extra leaves the film's resume point alone, and
         // returns here
+        onMenuRequested: {
+            visible = false
+            player.playMenu(drive)
+        }
         onExtraRequested: extra => {
             visible = false
             player.play(drive, [{ url: extra.url, title: extra.title, extra: true }], 0, 0)
@@ -125,6 +139,7 @@ FocusScope {
         id: player
         anchors.fill: parent
         mpv: root.mpv
+        nav: nav
         onClosed: wasExtra => {
             if (wasExtra)
                 discScreen.reopen()

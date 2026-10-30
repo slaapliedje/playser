@@ -20,6 +20,8 @@ FocusScope {
     signal playRequested(int index, real start)
     // one of disc.extras
     signal extraRequested(var extra)
+    // the disc through its own menus (DVD)
+    signal menuRequested()
     signal closed()
 
     visible: false
@@ -77,6 +79,8 @@ FocusScope {
                              + Theme.formatTime(resume.position) })
         if (series) {
             r.push({ label: "Play all", detail: episodes.length + " episodes", index: 0, start: 0 })
+            if (drive && drive.kind === "dvd")
+                r.push({ label: "Disc menu", detail: "", menu: true })
             if (extras.length)
                 r.push({ label: "Extras", detail: extras.length + "", extras: true })
             episodes.forEach((e, i) => r.push({
@@ -84,6 +88,8 @@ FocusScope {
                 watching: !!resume && resume.index === i }))
         } else {
             r.push({ label: resume ? "Play from the beginning" : "Play", detail: "", index: 0, start: 0 })
+            if (drive && drive.kind === "dvd")
+                r.push({ label: "Disc menu", detail: "", menu: true })
             if (extras.length)
                 r.push({ label: "Extras", detail: extras.length + "", extras: true })
         }
@@ -167,6 +173,8 @@ FocusScope {
                 return
             if (r.extras)
                 root.showExtras()
+            else if (r.menu)
+                root.menuRequested()
             else if (r.extra)
                 root.extraRequested(r.extra)
             else

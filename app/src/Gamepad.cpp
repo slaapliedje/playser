@@ -19,6 +19,7 @@ int keyForButton(int button)
     case SDL_GAMEPAD_BUTTON_EAST: return Qt::Key_Escape;
     case SDL_GAMEPAD_BUTTON_NORTH: return Qt::Key_I;
     case SDL_GAMEPAD_BUTTON_START: return Qt::Key_Menu;
+    case SDL_GAMEPAD_BUTTON_BACK: return Qt::Key_TopMenu; // View/Select: a disc's title menu
     case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: return Qt::Key_PageUp;
     case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: return Qt::Key_PageDown;
     default: return 0;

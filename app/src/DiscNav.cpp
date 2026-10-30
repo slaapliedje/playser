@@ -1,0 +1,380 @@
+#include "DiscNav.h"
+
+#include <QFile>
+#include <QLoggingCategory>
+#include <QTimer>
+#include <mpv/client.h>
+#include <mpv/stream_cb.h>
+#include <mutex>
+
+#include <discnav.h>
+
+Q_LOGGING_CATEGORY(lcNav, "playser.discnav", QtInfoMsg)
+
+namespace {
+
+// Settings for discnav segments (docs/spike-results.md, 0b), per file so
+// other playback keeps mpv's defaults: MPEG-PS has no header, so the format
+// is given and probing kept short but long enough (1 MB) to see the first
+// audio packet; a one-picture still needs the first frame shown without
+// waiting for a second, and no frame threading (nothing drains it during a
+// still); the VM chooses the tracks (applyTracks), never mpv.
+const QStringList kSegmentOptions = {
+    "demuxer-lavf-format=mpeg", "demuxer-lavf-probesize=1048576", "demuxer-lavf-analyzeduration=0.5",
+    "cache=no", "demuxer-readahead-secs=0.5", "video-latency-hacks=yes", "vd-lavc-threads=1",
+    "sid=no",
+};
+
+// the disc's menu graphics, under the UI (UiRenderer: overlay 1)
+constexpr int kMenuOverlay = 0;
+
+constexpr int kMaxLoadErrors = 5;
+
+} // namespace
+
+// One opened disc. mpv's reader thread can still hold a stream of it after
+// close(), so it lives until its last stream closes.
+struct NavContext
+{
+    discnav_t *nav = nullptr;
+    std::mutex mutex;
+    int streams = 0;
+    bool closing = false;
+};
+
+namespace {
+
+// mpv's stream_cb registration outlives any one disc: it finds the current
+// one here. Lock order: a discnav lock (held during its callbacks), then
+// this; this, then a NavContext's.
+struct Router
+{
+    std::mutex mutex;
+    NavContext *current = nullptr;
+    DiscNav *receiver = nullptr;
+} g_router;
+
+void freeIfDone(NavContext *ctx)
+{
+    bool done;
+    {
+        std::lock_guard lock(ctx->mutex);
+        done = ctx->closing && ctx->streams == 0;
+    }
+    if (done) {
+        discnav_close(ctx->nav);
+        delete ctx;
+    }
+}
+
+struct Stream
+{
+    NavContext *ctx;
+    discnav_stream_t *s;
+};
+
+int64_t readFn(void *cookie, char *buf, uint64_t nbytes)
+{
+    auto *st = static_cast<Stream *>(cookie);
+    return discnav_stream_read(st->s, buf, nbytes);
+}
+
+void cancelFn(void *cookie)
+{
+    discnav_stream_cancel(static_cast<Stream *>(cookie)->s);
+}
+
+void closeFn(void *cookie)
+{
+    auto *st = static_cast<Stream *>(cookie);
+    discnav_stream_close(st->s);
+    {
+        std::lock_guard lock(st->ctx->mutex);
+        st->ctx->streams--;
+    }
+    freeIfDone(st->ctx);
+    delete st;
+}
+
+int openFn(void *, char *, mpv_stream_cb_info *info)
+{
+    NavContext *ctx;
+    {
+        std::lock_guard lock(g_router.mutex);
+        ctx = g_router.current;
+        if (!ctx)
+            return MPV_ERROR_LOADING_FAILED;
+        std::lock_guard ctxLock(ctx->mutex);
+        ctx->streams++;
+    }
+    discnav_stream_t *s = discnav_stream_open(ctx->nav);
+    if (!s) {
+        {
+            std::lock_guard lock(ctx->mutex);
+            ctx->streams--;
+        }
+        freeIfDone(ctx);
+        return MPV_ERROR_LOADING_FAILED;
+    }
+    info->cookie = new Stream{ ctx, s };
+    info->read_fn = readFn;
+    info->close_fn = closeFn;
+    info->cancel_fn = cancelFn;
+    return 0;
+}
+
+// called with discnav's lock held, on mpv's reader thread or in action():
+// only queue
+void onEvent(void *user, discnav_event_t event)
+{
+    std::lock_guard lock(g_router.mutex);
+    if (g_router.current != user || !g_router.receiver)
+        return;
+    QMetaObject::invokeMethod(g_router.receiver, "onNavEvent", Qt::QueuedConnection, Q_ARG(int, int(event)));
+}
+
+void onLog(void *, int level, const char *message)
+{
+    if (level == 0)
+        qCInfo(lcNav, "%s", message);
+    else
+        qCDebug(lcNav, "%s", message);
+}
+
+} // namespace
+
+DiscNav::DiscNav(QObject *parent) : QObject(parent)
+{
+    std::lock_guard lock(g_router.mutex);
+    g_router.receiver = this;
+}
+
+DiscNav::~DiscNav()
+{
+    close();
+    std::lock_guard lock(g_router.mutex);
+    if (g_router.receiver == this)
+        g_router.receiver = nullptr;
+}
+
+void DiscNav::setMpv(Mpv *mpv)
+{
+    if (mpv == m_mpv)
+        return;
+    if (m_mpv)
+        disconnect(m_mpv, nullptr, this, nullptr);
+    m_mpv = mpv;
+    if (m_mpv) {
+        static bool registered = false;
+        if (!registered)
+            registered = mpv_stream_cb_add_ro(m_mpv->handle(), "discnav", nullptr, openFn) >= 0;
+        connect(m_mpv, &Mpv::fileLoaded, this, &DiscNav::onFileLoaded);
+        connect(m_mpv, &Mpv::endFile, this, &DiscNav::onEndFile);
+        connect(m_mpv, &Mpv::tracksChanged, this, &DiscNav::applyTracks);
+        connect(m_mpv, &Mpv::videoGeometryChanged, this, &DiscNav::scheduleOverlay);
+        connect(m_mpv, &Mpv::transferChanged, this, &DiscNav::scheduleOverlay);
+    }
+    emit mpvChanged();
+}
+
+bool DiscNav::open(const QString &device)
+{
+    close();
+    if (!m_mpv)
+        return false;
+    auto *ctx = new NavContext;
+    ctx->nav = discnav_open(QFile::encodeName(device).constData(), "en",
+                            onEvent, onLog, ctx);
+    if (!ctx->nav) {
+        delete ctx;
+        return false;
+    }
+    {
+        std::lock_guard lock(g_router.mutex);
+        g_router.current = ctx;
+    }
+    m_ctx = ctx;
+    m_loadPending = false;
+    m_errors = 0;
+    m_aid = m_sid = -2;
+    m_forcedOnly = -1;
+    m_mpv->setStallCheck(false);
+    emit activeChanged();
+    load();
+    return true;
+}
+
+void DiscNav::close()
+{
+    if (!m_ctx)
+        return;
+    NavContext *ctx = m_ctx;
+    m_ctx = nullptr;
+    {
+        std::lock_guard lock(g_router.mutex);
+        if (g_router.current == ctx)
+            g_router.current = nullptr;
+        std::lock_guard ctxLock(ctx->mutex);
+        ctx->closing = true;
+    }
+    if (m_mpv) {
+        m_mpv->stop(); // cancels and closes the stream; the context goes with it
+        m_mpv->setOverlay(kMenuOverlay, QImage());
+        m_mpv->setStallCheck(true);
+    }
+    m_overlayShown = false;
+    freeIfDone(ctx);
+    if (m_inMenu) {
+        m_inMenu = false;
+        emit inMenuChanged();
+    }
+    emit activeChanged();
+}
+
+bool DiscNav::action(const QString &name)
+{
+    static const QHash<QString, discnav_action_t> actions = {
+        { "up", DISCNAV_UP }, { "down", DISCNAV_DOWN }, { "left", DISCNAV_LEFT },
+        { "right", DISCNAV_RIGHT }, { "activate", DISCNAV_ACTIVATE }, { "menu", DISCNAV_ROOT_MENU },
+        { "title", DISCNAV_TITLE_MENU }, { "back", DISCNAV_GO_UP },
+        { "previous", DISCNAV_PREV_CHAPTER }, { "next", DISCNAV_NEXT_CHAPTER },
+    };
+    const auto it = actions.constFind(name);
+    if (!m_ctx || it == actions.cend())
+        return false;
+    return discnav_action(m_ctx->nav, it.value());
+}
+
+void DiscNav::load()
+{
+    m_loadPending = true;
+    m_mpv->loadFile(QStringLiteral("discnav://"), kSegmentOptions);
+}
+
+void DiscNav::onNavEvent(int event)
+{
+    if (!m_ctx)
+        return;
+    switch (event) {
+    case DISCNAV_EVENT_OVERLAY:
+        scheduleOverlay();
+        break;
+    case DISCNAV_EVENT_FLUSH:
+        // drop mpv's buffered old content rather than let it play out
+        load();
+        break;
+    case DISCNAV_EVENT_TRACKS:
+        applyTracks();
+        break;
+    case DISCNAV_EVENT_STOP:
+        break; // the segment's end follows (onEndFile)
+    }
+}
+
+void DiscNav::onFileLoaded()
+{
+    if (!m_ctx)
+        return;
+    m_loadPending = false;
+    m_aid = m_sid = -2; // a new file: new track ids
+    m_forcedOnly = -1;
+    applyTracks();
+    discnav_segment_opened(m_ctx->nav);
+}
+
+void DiscNav::onEndFile(const QString &reason)
+{
+    if (!m_ctx)
+        return;
+    if (discnav_stopped(m_ctx->nav)) {
+        close();
+        emit stopped();
+        return;
+    }
+    m_errors = reason == u"error" ? m_errors + 1 : 0;
+    if (m_errors > kMaxLoadErrors) {
+        qCWarning(lcNav, "the disc can't be read any more");
+        close();
+        emit stopped();
+        return;
+    }
+    // a flush already loaded the next segment: loading again would cancel
+    // it and lose its first blocks (a still menu's only picture)
+    if (!m_loadPending || m_errors)
+        load();
+}
+
+// The VM's choice of streams, applied once mpv lists them (MPEG-PS streams
+// show up only when their first packet does).
+void DiscNav::applyTracks()
+{
+    if (!m_ctx || !m_mpv)
+        return;
+    discnav_tracks_t t;
+    discnav_get_tracks(m_ctx->nav, &t);
+    if (t.in_menu != m_inMenu) {
+        m_inMenu = t.in_menu;
+        emit inMenuChanged();
+    }
+    const auto find = [this](const char *type, int srcId) -> qint64 {
+        if (srcId < 0)
+            return -1;
+        for (const QVariant &v : m_mpv->tracks()) {
+            const QVariantMap track = v.toMap();
+            if (track.value("type").toString() == QLatin1String(type) && track.value("src-id").toInt() == srcId)
+                return track.value("id").toLongLong();
+        }
+        return -2; // not listed yet
+    };
+    const qint64 aid = find("audio", t.audio_id);
+    if (aid >= 0 && aid != m_aid) {
+        qCInfo(lcNav, "audio track %lld (stream 0x%x)", aid, t.audio_id);
+        m_mpv->setMpvProperty("aid", aid);
+        m_aid = aid;
+    }
+    // in menus discnav draws the subpictures (with the disc's palette and
+    // highlights), so mpv must not
+    const qint64 sid = t.in_menu ? -1 : find("sub", t.sub_id);
+    if (sid == -1 && m_sid != -1) {
+        m_mpv->setMpvProperty("sid", "no");
+        m_sid = -1;
+    } else if (sid >= 0 && sid != m_sid) {
+        qCInfo(lcNav, "subtitle track %lld (stream 0x%x)", sid, t.sub_id);
+        m_mpv->setMpvProperty("sid", sid);
+        m_sid = sid;
+    }
+    if (int(t.sub_forced_only) != m_forcedOnly) {
+        m_mpv->setMpvProperty("sub-forced-events-only", t.sub_forced_only);
+        m_forcedOnly = t.sub_forced_only;
+    }
+}
+
+void DiscNav::scheduleOverlay()
+{
+    if (!m_ctx || m_overlayPending)
+        return;
+    m_overlayPending = true;
+    QTimer::singleShot(0, this, &DiscNav::renderOverlay);
+}
+
+// The menu graphics are composited at the video's storage size (720x480)
+// and scaled by mpv onto the video's rectangle, like the picture.
+void DiscNav::renderOverlay()
+{
+    m_overlayPending = false;
+    if (!m_ctx || !m_mpv)
+        return;
+    const QSize frame = m_mpv->videoSize();
+    if (frame.isEmpty() || m_mpv->videoRect().isEmpty())
+        return;
+    QImage rgba(frame, QImage::Format_RGBA8888);
+    if (!discnav_render_overlay(m_ctx->nav, rgba.bits(), frame.width(), frame.height())) {
+        if (m_overlayShown)
+            m_mpv->setOverlay(kMenuOverlay, QImage());
+        m_overlayShown = false;
+        return;
+    }
+    const QImage bgra = rgba.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    m_mpv->setOverlay(kMenuOverlay, m_encoder.encode(bgra, m_mpv->transfer()), m_mpv->videoRect());
+    m_overlayShown = true;
+}

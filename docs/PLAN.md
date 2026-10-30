@@ -374,6 +374,27 @@ already plays *Airheads*' menus end to end.
 - Tests: synthetic DVD fixtures (`build/fixtures`) driven by scripted
   input, compared by screenshots.
 
+Status (2026-10-30):
+- ✅ `libdiscnav/discnav.{h,c}` (LGPL-2.1+, static, own CMake + pkg-config;
+  a Flatpak module): the spike's engine without its globals or SDL. The
+  stream calls map 1:1 onto mpv's `stream_cb`; events (overlay, flush,
+  tracks, stop) come back through a callback; menu graphics composited
+  into an RGBA frame; actions include chapter skip.
+- ✅ App: `DiscNav` (QML) registers `discnav://`, reloads segments with the
+  spike's bookkeeping, per-file demuxer options (`Mpv::loadFile`), applies
+  the VM's tracks, draws the menu graphics as overlay 0 under the UI
+  (now overlay 1), encoded like the UI, placed on the video rectangle; the
+  audio stall watchdog is off while it plays (stills stop the clock).
+- ✅ Player: Play on a DVD opens its menus (with a resume point, the disc
+  screen offers Disc menu); in menus d-pad/A work the buttons and B goes
+  up (at the top it stops); in titles left/right and LB/RB skip chapters,
+  Start opens the disc menu, View (new: `Key_TopMenu`) the title menu.
+  No seeking and no resume through menus yet; the OSD shows no times.
+- ✅ Verified on the synthetic disc (desktop, also the Flatpak build):
+  still menu, highlight moves, motion menu with audio, title, chapter
+  skip, menu call from a title, title end back to the menu, B at the top
+  menu home. Not yet on a commercial DVD (needs one in a drive).
+
 ### Phase 3 — Blu-ray navigation and BD-J menus (UHD too)
 - Blu-ray navigation mode: libbluray's `bd_play()` + `bd_read_ext()`
   events through `stream_cb` instead of mpv's `bd://`. Keeps the disc open

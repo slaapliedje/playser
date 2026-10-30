@@ -210,6 +210,13 @@ modules:
       - type: patch
         path: patches/mpv-overlay-display-colorspace.patch
 
+  # DVD menus (ours, LGPL; static, used by the app)
+  - name: libdiscnav
+    buildsystem: cmake-ninja
+    sources:
+      - type: dir
+        path: ../libdiscnav
+
   - name: playser
     buildsystem: cmake-ninja
     config-opts:
