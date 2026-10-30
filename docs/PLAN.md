@@ -345,6 +345,8 @@ libbluray runs the HDMV VM and decodes the IG menus; pass its overlays to
 mpv, plus pop-up menus during playback. Needs an HDMV test disc.
 
 ### Phase 5 — 3D (Blu-ray 3D and side-by-side files)
+**On hold** (2026-10-29) until the box moves to a room with a 3D TV: an LG
+and a Panasonic plasma (not the living-room 4K LG, which has no 3D).
 Requested by a user. Test gear: passive and active 3D glasses, VR
 headsets, VITURE XR glasses.
 - **Decoding:** 3D Blu-rays carry the second eye as H.264 MVC
