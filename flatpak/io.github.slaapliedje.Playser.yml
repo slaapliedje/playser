@@ -11,6 +11,10 @@ id: io.github.slaapliedje.Playser
 runtime: org.kde.Platform
 runtime-version: '6.11'
 sdk: org.kde.Sdk
+# Java 21 for Blu-ray BD-J menus: libbluray needs a SecurityManager (gone in
+# Java 24) and a full JRE (it forces AWT on); docs/spike-results.md 0e
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
 command: playser
 
 finish-args:
@@ -28,6 +32,7 @@ finish-args:
   # it HDR swapchains fail ("Hooking has failed somewhere!")
   - --filesystem=xdg-run/gamescope-0
   - --env=LC_NUMERIC=C
+  - --env=JAVA_HOME=/app/jre              # libbluray's BD-J
   - --filesystem=~/.MakeMKV:create         # MakeMKV's key and data (user's own)
   # an installed MakeMKV Flatpak is preferred over the bundled copy, so its
   # updates apply without rebuilding this app (see setupDecryption())
@@ -68,12 +73,26 @@ modules:
         url: https://download.videolan.org/pub/libdvdcss/1.6.0/libdvdcss-1.6.0.tar.xz
         sha256: 7ea556c846b7bfc32d47b41cae56d1863a6b6d5f706bb162778d6f298490977c
 
-  # AACS/BD+ come from the user's MakeMKV (libmmbd) at runtime; BD-J (Phase 4)
-  # will need the jar and a JDK extension
+  # The JRE for BD-J menus: just the modules libbluray and disc applications
+  # use (BD-J is Java ME PBP 1.1: java.awt/beans, java.rmi, ...); 53 MB, the
+  # extension's whole JRE is ~200 MB
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk21/bin/jlink --output /app/jre --strip-debug --no-header-files --no-man-pages --compress=zip-6
+        --add-modules java.base,java.desktop,java.logging,java.naming,java.management,java.rmi,java.xml,jdk.unsupported
+
+  # AACS/BD+ come from the user's MakeMKV (libmmbd) at runtime; the BD-J jar
+  # is built with the extension's JDK and Ant
   - name: libbluray
     buildsystem: meson
+    build-options:
+      append-path: /usr/lib/sdk/openjdk21/bin
+      env:
+        JAVA_HOME: /usr/lib/sdk/openjdk21/jvm/openjdk-21
     config-opts:
-      - -Dbdj_jar=disabled
+      - -Dbdj_jar=enabled
+      - -Djdk_home=/usr/lib/sdk/openjdk21/jvm/openjdk-21
     sources:
       - type: archive
         url: https://download.videolan.org/pub/videolan/libbluray/1.5.0/libbluray-1.5.0.tar.xz
