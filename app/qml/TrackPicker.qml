@@ -7,6 +7,9 @@ FocusScope {
     id: root
 
     required property Mpv mpv
+    // a disc playing through its menus: its streams, chosen through the disc
+    property DiscNav nav
+    readonly property bool navigating: !!nav && nav.active
     signal dismissed()
 
     visible: false
@@ -41,11 +44,14 @@ FocusScope {
         return -1
     }
 
-    readonly property var audioModel: mpv.tracks.filter(t => t.type === "audio")
-                                          .map(t => ({ id: t.id, label: trackLabel(t), selected: t.selected }))
-    readonly property var subModel: [{ id: "no", label: "Off", selected: !mpv.tracks.some(t => t.type === "sub" && t.selected) }]
-        .concat(mpv.tracks.filter(t => t.type === "sub")
-                .map(t => ({ id: t.id, label: trackLabel(t) + (t.forced ? "  (forced)" : ""), selected: t.selected })))
+    readonly property var audioModel: navigating ? nav.audioStreams
+        : mpv.tracks.filter(t => t.type === "audio")
+                    .map(t => ({ id: t.id, label: trackLabel(t), selected: t.selected }))
+    readonly property var subModel: navigating
+        ? [{ id: "no", label: "Off", selected: !nav.subtitleStreams.some(t => t.selected) }].concat(nav.subtitleStreams)
+        : [{ id: "no", label: "Off", selected: !mpv.tracks.some(t => t.type === "sub" && t.selected) }]
+            .concat(mpv.tracks.filter(t => t.type === "sub")
+                    .map(t => ({ id: t.id, label: trackLabel(t) + (t.forced ? "  (forced)" : ""), selected: t.selected })))
 
     Keys.onEscapePressed: close()
     Keys.onBackPressed: close()
@@ -73,14 +79,14 @@ FocusScope {
             title: "Audio"
             model: root.audioModel
             list.KeyNavigation.right: subCol.list
-            onChosen: id => root.mpv.setMpvProperty("aid", id)
+            onChosen: id => root.navigating ? root.nav.selectStream("audio", id) : root.mpv.setMpvProperty("aid", id)
         }
         TrackColumn {
             id: subCol
             title: "Subtitles"
             model: root.subModel
             list.KeyNavigation.left: audioCol.list
-            onChosen: id => root.mpv.setMpvProperty("sid", id)
+            onChosen: id => root.navigating ? root.nav.selectStream("sub", id) : root.mpv.setMpvProperty("sid", id)
         }
     }
 
@@ -90,6 +96,13 @@ FocusScope {
         property var model
         readonly property alias list: view
         signal chosen(var id)
+
+        // choosing rebuilds the model, which would put the cursor back on
+        // the first row
+        onModelChanged: {
+            const i = view.currentIndex
+            Qt.callLater(() => view.currentIndex = Math.min(i, view.count - 1))
+        }
 
         width: 760 * Theme.scale
         height: 640 * Theme.scale

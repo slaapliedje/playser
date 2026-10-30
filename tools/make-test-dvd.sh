@@ -4,7 +4,8 @@
 #   VMGM menu   still (pause=inf), NO audio, 3 buttons:
 #                 [Play Title 1] [Play Title 2] [Motion Menu]
 #   VTS menu    6 s looping motion menu WITH audio, 2 buttons:
-#                 [Back] [Play Title 1]
+#                 [Submenu] [Play Title 1]
+#   VTS menu 2  still submenu without a "go up", 1 button: [Main Menu]
 #   Title 1     20 s, chapters every 5 s, timecode burned in -> back to VMGM menu
 #   Title 2     10 s colour bars, forced subtitle 1-8 s (orange box,
 #               cyan inside: checks the disc's palette)       -> back to VMGM menu
@@ -28,6 +29,7 @@ txt() { # text, x, y, size
 # Button geometry (720x480 storage coords) shared by graphics and spumux.
 vmgm_btns=("200 150 520 200" "200 230 520 280" "200 310 520 360")
 vts_btns=("100 360 330 410" "390 360 620 410")
+sub_btns=("240 310 480 360")
 
 # Outline highlight/select overlays for spumux (<=4 colours, transparent bg).
 overlay() { # out.png colour geometry...
@@ -80,7 +82,7 @@ spumux_xml "$work/vmgm.xml" "$work/vmgm_hl.png" "$work/vmgm_sel.png" \
 spumux -s0 "$work/vmgm.xml" <"$work/vmgm_bg.mpg" >"$work/vmgm_menu.mpg" 2>"$work/spumux-vmgm.log"
 
 echo ">> VTS motion menu (with audio)"
-vts_labels=("Back" "Play Title 1")
+vts_labels=("Submenu" "Play Title 1")
 ff -f lavfi -i "testsrc2=s=720x480:r=30000/1001" -f lavfi -i "sine=f=330:sample_rate=48000" -t 6 \
     -vf "drawbox=x=0:y=0:w=720:h=120:color=black@0.7:t=fill,$(txt 'MOTION MENU (loops)' 150 40 40),$(label_boxes vts_btns vts_labels)" \
     -target ntsc-dvd -aspect 4:3 "$work/vts_bg.mpg"
@@ -90,6 +92,16 @@ spumux_xml "$work/vts.xml" "$work/vts_hl.png" "$work/vts_sel.png" \
     "b1 ${vts_btns[0]} b1 b1 b2 b2" \
     "b2 ${vts_btns[1]} b2 b2 b1 b1"
 spumux -s0 "$work/vts.xml" <"$work/vts_bg.mpg" >"$work/vts_menu.mpg" 2>"$work/spumux-vts.log"
+
+echo ">> VTS still submenu (no audio)"
+sub_labels=("Main Menu")
+ff -f lavfi -i "color=c=0x203010:s=720x480:r=30000/1001" -t 1 \
+    -vf "$(txt 'SUBMENU' 260 60 40),$(label_boxes sub_btns sub_labels)" \
+    -an -target ntsc-dvd -aspect 4:3 "$work/sub_bg.mpg"
+overlay "$work/sub_hl.png" yellow "${sub_btns[@]}"
+overlay "$work/sub_sel.png" red "${sub_btns[@]}"
+spumux_xml "$work/sub.xml" "$work/sub_hl.png" "$work/sub_sel.png" "b1 ${sub_btns[0]} b1 b1 b1 b1"
+spumux -s0 "$work/sub.xml" <"$work/sub_bg.mpg" >"$work/sub_menu.mpg" 2>"$work/spumux-sub.log"
 
 echo ">> titles"
 ff -f lavfi -i "testsrc2=s=720x480:r=30000/1001" -f lavfi -i "sine=f=440:sample_rate=48000" -t 20 \
@@ -128,14 +140,20 @@ cat >"$work/dvd.xml" <<EOF
     <menus>
       <video format="ntsc" aspect="4:3"/>
       <pgc entry="root">
-        <button name="b1">jump vmgm menu 1;</button>
+        <button name="b1">jump menu 2;</button>
         <button name="b2">jump title 1;</button>
         <vob file="$work/vts_menu.mpg"/>
         <post>jump cell 1;</post>
       </pgc>
+      <pgc>
+        <button name="b1">jump menu 1;</button>
+        <vob file="$work/sub_menu.mpg" pause="inf"/>
+      </pgc>
     </menus>
     <titles>
       <video format="ntsc" aspect="4:3"/>
+      <audio lang="en"/>
+      <subpicture lang="en"/>
       <pgc>
         <vob file="$work/title1.mpg" chapters="0,0:05,0:10,0:15"/>
         <post>call vmgm menu 1;</post>

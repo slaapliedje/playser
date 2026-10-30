@@ -409,6 +409,7 @@ FocusScope {
         id: picker
         anchors.fill: parent
         mpv: root.mpv
+        nav: root.nav
         onDismissed: { root.forceActiveFocus(); root.showOsd() }
     }
 }

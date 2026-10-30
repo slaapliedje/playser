@@ -25,6 +25,10 @@ class DiscNav : public QObject
     Q_PROPERTY(bool active READ active NOTIFY activeChanged)
     // in a menu (d-pad and A go to its buttons) rather than a title
     Q_PROPERTY(bool inMenu READ inMenu NOTIFY inMenuChanged)
+    // the title's streams as the disc describes them, for the track picker:
+    // [{ id (for selectStream), label, selected }]; empty in a menu
+    Q_PROPERTY(QVariantList audioStreams READ audioStreams NOTIFY streamsChanged)
+    Q_PROPERTY(QVariantList subtitleStreams READ subtitleStreams NOTIFY streamsChanged)
 
 public:
     explicit DiscNav(QObject *parent = nullptr);
@@ -34,6 +38,8 @@ public:
     void setMpv(Mpv *mpv);
     bool active() const { return m_ctx != nullptr; }
     bool inMenu() const { return m_inMenu; }
+    QVariantList audioStreams() const;
+    QVariantList subtitleStreams() const;
 
     // Starts the disc (device, image or VIDEO_TS directory) from its first
     // play programming, usually ending up in its menu. False if it can't be
@@ -50,11 +56,15 @@ public:
     Q_INVOKABLE QVariantMap position() const;
     // Jumps to `seconds` into the current title. False in a menu.
     Q_INVOKABLE bool seek(double seconds);
+    // Has the disc play an audio or subtitle stream (an id from
+    // audioStreams/subtitleStreams; "no" turns subtitles off).
+    Q_INVOKABLE bool selectStream(const QString &type, const QVariant &id);
 
 signals:
     void mpvChanged();
     void activeChanged();
     void inMenuChanged();
+    void streamsChanged();
     // the disc's programming ended, or it can't be read any more
     void stopped();
 

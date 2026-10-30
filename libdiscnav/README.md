@@ -28,6 +28,12 @@ Playser repository), whose lessons it keeps; Blu-ray navigation is planned.
   as MPEG-PS stream ids, which is what lavf and mpv call `src-id`). In
   menus libdiscnav draws the subpictures itself, so the player must not;
   in titles the player decodes subtitles, with `discnav_get_palette`.
+  A track menu lists the disc's own streams (`discnav_get_streams`:
+  language, commentary, captions) and changes them through the disc
+  (`discnav_select_stream`), so the choice holds across segments.
+- **Back.** `DISCNAV_GO_UP` follows the disc; many discs leave it
+  undefined in submenus (relying on a "main menu" button), and then it
+  goes to the title set's root menu. At the main menu it's refused.
 - **Threads.** Stream functions run on the player's reader thread, the
   rest on any thread. Callbacks come from either, with an internal lock
   held: queue work from them, don't call back into libdiscnav.

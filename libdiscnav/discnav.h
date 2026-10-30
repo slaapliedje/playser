@@ -101,6 +101,38 @@ typedef struct {
 
 void discnav_get_tracks(discnav_t *nav, discnav_tracks_t *tracks);
 
+typedef enum { DISCNAV_AUDIO, DISCNAV_SUBTITLES } discnav_stream_type_t;
+
+/* what the disc says a stream is for */
+typedef enum {
+    DISCNAV_KIND_NORMAL,
+    DISCNAV_KIND_COMMENTARY,
+    DISCNAV_KIND_VISUALLY_IMPAIRED,
+    DISCNAV_KIND_LARGE,
+    DISCNAV_KIND_CHILDREN,
+    DISCNAV_KIND_CAPTIONS,
+    DISCNAV_KIND_FORCED,
+} discnav_kind_t;
+
+typedef struct {
+    int index;           /* the disc's stream number, for discnav_select_stream */
+    int id;              /* MPEG-PS stream id, as in discnav_tracks_t */
+    char lang[3];        /* ISO 639-1 ("en"), "" if the disc doesn't say */
+    discnav_kind_t kind;
+    const char *format;  /* audio: "ac3", "dts", "lpcm", "mpeg", "sdds"; else "" */
+    int channels;        /* audio */
+    bool selected;       /* subtitles: shown (not just forced ones) */
+} discnav_stream_info_t;
+
+/* The current title's audio or subtitle streams, up to max of them;
+ * returns how many. 0 in a menu. */
+int discnav_get_streams(discnav_t *nav, discnav_stream_type_t type, discnav_stream_info_t *streams, int max);
+
+/* Makes the disc play stream `index` (discnav_stream_info_t.index); for
+ * subtitles -1 turns them off (forced subpictures still show). Expect
+ * DISCNAV_EVENT_TRACKS. False in a menu or if the disc has no such stream. */
+bool discnav_select_stream(discnav_t *nav, discnav_stream_type_t type, int index);
+
 /* Where playback is: the title (1-based, as the disc numbers them), the
  * time into it and its length (0 if unknown; length may be NULL). False
  * in a menu. Runs ahead of what's on screen by the player's read-ahead. */

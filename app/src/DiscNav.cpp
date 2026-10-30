@@ -1,6 +1,7 @@
 #include "DiscNav.h"
 
 #include <QFile>
+#include <QLocale>
 #include <QLoggingCategory>
 #include <QTimer>
 #include <mpv/client.h>
@@ -261,6 +262,70 @@ bool DiscNav::seek(double seconds)
     return m_ctx && discnav_seek(m_ctx->nav, seconds);
 }
 
+namespace {
+
+QVariantList streamList(NavContext *ctx, discnav_stream_type_t type)
+{
+    if (!ctx)
+        return {};
+    discnav_stream_info_t streams[32];
+    const int n = discnav_get_streams(ctx->nav, type, streams, 32);
+    QVariantList list;
+    for (int i = 0; i < n; i++) {
+        const discnav_stream_info_t &st = streams[i];
+        QStringList parts;
+        const QLocale::Language language = st.lang[0] ? QLocale(QString::fromLatin1(st.lang)).language()
+                                                      : QLocale::AnyLanguage;
+        parts << (language > QLocale::C ? QLocale::languageToString(language)
+                                        : QStringLiteral("%1 %2").arg(type == DISCNAV_AUDIO ? "Audio" : "Subtitles")
+                                                                  .arg(i + 1));
+        switch (st.kind) {
+        case DISCNAV_KIND_COMMENTARY:        parts << QStringLiteral("Commentary"); break;
+        case DISCNAV_KIND_VISUALLY_IMPAIRED: parts << QStringLiteral("Described"); break;
+        case DISCNAV_KIND_LARGE:             parts << QStringLiteral("Large"); break;
+        case DISCNAV_KIND_CHILDREN:          parts << QStringLiteral("Children's"); break;
+        case DISCNAV_KIND_CAPTIONS:          parts << QStringLiteral("Captions"); break;
+        case DISCNAV_KIND_FORCED:            parts << QStringLiteral("Forced"); break;
+        case DISCNAV_KIND_NORMAL:            break;
+        }
+        if (type == DISCNAV_AUDIO) {
+            static const QHash<QString, QString> formats = {
+                { "ac3", "Dolby Digital" }, { "dts", "DTS" }, { "lpcm", "PCM" }, { "mpeg", "MPEG" }, { "sdds", "SDDS" },
+            };
+            const QString layout = st.channels == 1 ? QStringLiteral("Mono")
+                                 : st.channels == 2 ? QStringLiteral("Stereo")
+                                 : st.channels == 6 ? QStringLiteral("5.1")
+                                 : st.channels == 8 ? QStringLiteral("7.1")
+                                 : QStringLiteral("%1ch").arg(st.channels);
+            parts << QStringLiteral("%1 %2").arg(formats.value(QString::fromLatin1(st.format)), layout).trimmed();
+        }
+        list.append(QVariantMap{ { "id", st.index }, { "label", parts.join(QStringLiteral("  ·  ")) },
+                                 { "selected", st.selected } });
+    }
+    return list;
+}
+
+} // namespace
+
+QVariantList DiscNav::audioStreams() const
+{
+    return streamList(m_ctx, DISCNAV_AUDIO);
+}
+
+QVariantList DiscNav::subtitleStreams() const
+{
+    return streamList(m_ctx, DISCNAV_SUBTITLES);
+}
+
+bool DiscNav::selectStream(const QString &type, const QVariant &id)
+{
+    if (!m_ctx)
+        return false;
+    const int index = id.toString() == QLatin1String("no") ? -1 : id.toInt();
+    return discnav_select_stream(m_ctx->nav, type == QLatin1String("audio") ? DISCNAV_AUDIO : DISCNAV_SUBTITLES,
+                                 index);
+}
+
 void DiscNav::load()
 {
     m_loadPending = true;
@@ -332,6 +397,7 @@ void DiscNav::applyTracks()
         m_inMenu = t.in_menu;
         emit inMenuChanged();
     }
+    emit streamsChanged();
     const auto find = [this](const char *type, int srcId) -> qint64 {
         if (srcId < 0)
             return -1;

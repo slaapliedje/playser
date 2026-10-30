@@ -24,6 +24,7 @@ FIXTURE = ROOT / "build/fixtures/discnav-test/discnav-test.iso"
 MENU_BG = (0x10, 0x18, 0x30)
 VMGM_BUTTONS = [(200, 150, 520, 200), (200, 230, 520, 280), (200, 310, 520, 360)]
 VTS_BUTTONS = [(100, 360, 330, 410), (390, 360, 620, 410)]
+SUB_BG = (0x20, 0x30, 0x10)
 
 failures = []
 
@@ -99,16 +100,24 @@ def main():
           str(s[3].at(100, 450)))
 
     # 2. motion menu, its buttons side by side, title 1 from it, chapter
-    #    skip, seek, the disc menu from the title, B at the top menu goes home
-    log = run(opt.app, "4,down,down,enter,3,shot,right,1,shot,enter,3,pgdn,2,left,2,menu,3,shot,enter,3,back,3,shot,quit",
-              out / "b")
-    s = [Shot(out / f"b/shot-0{i}.png") for i in range(1, 4)]
+    #    skip, seek, the disc menu from the title, its submenu (the disc has
+    #    no "go up": B goes to the main menu), B at the main menu goes home
+    log = run(opt.app, "4,down,down,enter,3,shot,right,1,shot,enter,3,pgdn,2,left,2,menu,3,shot,"
+                       "enter,3,shot,back,3,shot,back,3,shot,quit", out / "b")
+    s = [Shot(out / f"b/shot-0{i}.png") for i in range(1, 6)]
     check("motion menu, first button", outlined(s[0], VTS_BUTTONS[0]) and not outlined(s[0], VTS_BUTTONS[1]))
     check("right moves the highlight", outlined(s[1], VTS_BUTTONS[1]))
     check("chapter skip", "user: next chapter" in log)
     check("seek in a title", any(l.startswith("user: seek to") and "refused" not in l for l in log))
     check("disc menu from a title", "user: root menu" in log and outlined(s[2], VTS_BUTTONS[0]))
-    check("B at the top menu goes home", "user: go up (refused)" in log and ui_shown(out / "b/shot-04-ui.png"))
+    check("submenu", near(s[3].at(100, 450), SUB_BG), str(s[3].at(100, 450)))
+    check("B in a submenu goes to the main menu", "go up: not on this disc, the main menu instead" in log
+          and outlined(s[4], VTS_BUTTONS[0]))
+    check("B at the main menu goes home", "user: go up (refused)" in log and ui_shown(out / "b/shot-06-ui.png"))
+
+    # 3. the track picker lists the disc's streams and chooses through it
+    log = run(opt.app, "4,down,enter,2,info,1,right,down,enter,1,quit", out / "c")
+    check("subtitles chosen in the picker", "user: subtitle stream 0" in log)
 
     print(f"\n{len(failures)} failed: {', '.join(failures)}" if failures else "\nall passed", f"(screenshots: {out})")
     return 1 if failures else 0

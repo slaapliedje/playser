@@ -73,6 +73,17 @@ struct discnav {
     int cur_button;
     int length_title;       /* the title length_secs is for */
     double length_secs;
+
+    /* The disc's main menus, for discs that leave "go up" undefined: the
+     * menu cells reached first or by a menu call, and those they lead to
+     * by themselves (an intro into its loop). Keys from menu_key(). */
+    int vts;                /* the current title set */
+    int menu_key;           /* the current menu cell, -1 outside menus */
+    int root_keys[16];
+    int n_root;
+    bool root_pending;      /* the next menu cell is a main menu */
+    bool user_moved;        /* a user action since the last cell started */
+    bool cell_started;      /* track_menu on the next NAV pack */
 };
 
 struct discnav_stream {
@@ -193,6 +204,43 @@ static void update_domain(discnav_t *nav)
     if (!menu)
         clear_spu(nav);
     emit(nav, DISCNAV_EVENT_TRACKS);
+}
+
+/* The menu cell playing, from its NAV pack's VOB and cell ids (libdvdnav
+ * can't name a PGC before a title set is open); -1 outside menus */
+static int menu_key(discnav_t *nav)
+{
+    dsi_t *dsi = dvdnav_get_current_nav_dsi(nav->dvd);
+    if (!nav->in_menu || !dsi)
+        return -1;
+    return (dvdnav_is_domain_vmgm(nav->dvd) ? 0 : nav->vts) << 24 | dsi->dsi_gi.vobu_vob_idn << 8 |
+           dsi->dsi_gi.vobu_c_idn;
+}
+
+static bool is_root(discnav_t *nav, int key)
+{
+    for (int i = 0; i < nav->n_root; i++)
+        if (nav->root_keys[i] == key)
+            return true;
+    return false;
+}
+
+/* On the first NAV pack of each cell: follow which menu we're in (see
+ * root_keys). */
+static void track_menu(discnav_t *nav)
+{
+    int key = menu_key(nav);
+    if (key >= 0 && key != nav->menu_key && !is_root(nav, key) &&
+        (nav->root_pending || (!nav->user_moved && is_root(nav, nav->menu_key))) &&
+        nav->n_root < (int)(sizeof(nav->root_keys) / sizeof(nav->root_keys[0]))) {
+        nav->root_keys[nav->n_root++] = key;
+        logf_(nav, 1, "main menu: vob %d cell %d of %s", key >> 8 & 0xffff, key & 0xff,
+              key >> 24 ? "a title set" : "the disc");
+    }
+    if (key >= 0)
+        nav->root_pending = false;
+    nav->menu_key = key;
+    nav->user_moved = false;
 }
 
 /* ---------- synthetic MPEG-PS blocks ---------- */
@@ -363,6 +411,8 @@ static int next_block(discnav_stream_t *s)
             continue;
         case DVDNAV_HOP_CHANNEL:
         case DVDNAV_VTS_CHANGE:
+            if (ev == DVDNAV_VTS_CHANGE)
+                nav->vts = ((dvdnav_vts_change_event_t *)s->blk)->new_vtsN;
             logf_(nav, 1, "%s%s%s", ev == DVDNAV_HOP_CHANNEL ? "hop channel" : "vts change",
                   s->got_data ? ": end of segment" : "",
                   s->got_data && nav->user_jump ? ", flush" : "");
@@ -382,6 +432,7 @@ static int next_block(discnav_stream_t *s)
             continue;
         case DVDNAV_CELL_CHANGE:
             update_domain(nav);
+            nav->cell_started = true;
             continue;
         case DVDNAV_NAV_PACKET: {
             /* a VOBU whose start doesn't continue the previous one is a
@@ -393,6 +444,9 @@ static int next_block(discnav_stream_t *s)
             nav->last_e_ptm = e_ptm;
             memcpy(nav->last_nav, s->blk, BLOCK);
             nav->have_nav = true;
+            if (nav->cell_started)
+                track_menu(nav);
+            nav->cell_started = false;
             update_overlay(nav);
             if (discont && s->got_data) {
                 logf_(nav, 1, "timestamp discontinuity: end of segment");
@@ -536,6 +590,7 @@ bool discnav_action(discnav_t *nav, discnav_action_t a)
         button > 0 && dvdnav_get_highlight_area(pci, button, 1, &area) == DVDNAV_STATUS_OK)
         activated = (spu_highlight_t){ true, area.sx, area.sy, area.ex, area.ey, area.palette };
     dvdnav_status_t st = DVDNAV_STATUS_ERR;
+    int32_t title, part;
     switch (a) {
     case DISCNAV_UP:           st = dvdnav_upper_button_select(nav->dvd, pci); break;
     case DISCNAV_DOWN:         st = dvdnav_lower_button_select(nav->dvd, pci); break;
@@ -544,15 +599,31 @@ bool discnav_action(discnav_t *nav, discnav_action_t a)
     case DISCNAV_ACTIVATE:     st = dvdnav_button_activate(nav->dvd, pci); break;
     case DISCNAV_ROOT_MENU:    st = dvdnav_menu_call(nav->dvd, DVD_MENU_Root); break;
     case DISCNAV_TITLE_MENU:   st = dvdnav_menu_call(nav->dvd, DVD_MENU_Title); break;
-    case DISCNAV_GO_UP:        st = dvdnav_go_up(nav->dvd); break;
+    case DISCNAV_GO_UP:
+        st = dvdnav_go_up(nav->dvd);
+        /* many discs leave it undefined and rely on a "main menu" button:
+         * from a title set's other menus, go to its root menu */
+        if (st != DVDNAV_STATUS_OK && nav->in_menu && !dvdnav_is_domain_vmgm(nav->dvd) &&
+            nav->menu_key >= 0 && !is_root(nav, nav->menu_key) &&
+            !(dvdnav_current_title_info(nav->dvd, &title, &part) == DVDNAV_STATUS_OK && part == DVD_MENU_Root) &&
+            dvdnav_menu_call(nav->dvd, DVD_MENU_Root) == DVDNAV_STATUS_OK) {
+            logf_(nav, 1, "go up: not on this disc, the main menu instead");
+            st = DVDNAV_STATUS_OK;
+            nav->root_pending = true;
+        }
+        break;
     case DISCNAV_PREV_CHAPTER: st = dvdnav_prev_pg_search(nav->dvd); break;
     case DISCNAV_NEXT_CHAPTER: st = dvdnav_next_pg_search(nav->dvd); break;
     }
     bool ok = st == DVDNAV_STATUS_OK;
     logf_(nav, 1, "user: %s%s", (unsigned)a < sizeof(names) / sizeof(names[0]) ? names[a] : "?",
           ok ? "" : " (refused)");
-    if (a >= DISCNAV_ACTIVATE && ok)
+    if (a >= DISCNAV_ACTIVATE && ok) {
         nav->user_jump = true;
+        nav->user_moved = true;
+        if (a == DISCNAV_ROOT_MENU || a == DISCNAV_TITLE_MENU)
+            nav->root_pending = true;
+    }
     if (a == DISCNAV_ACTIVATE && ok && activated.valid) {
         /* show the button in its action colours until the jump clears it */
         pthread_mutex_lock(&nav->olock);
@@ -589,6 +660,100 @@ static double title_length(discnav_t *nav, int t)
         nav->length_secs = duration / 90000.0;
     }
     return nav->length_secs;
+}
+
+static void lang_of(uint16_t code, char lang[3])
+{
+    lang[0] = code >> 8, lang[1] = code & 0xff, lang[2] = 0;
+    if (code == 0xffff || lang[0] < 'a' || lang[0] > 'z' || lang[1] < 'a' || lang[1] > 'z')
+        lang[0] = 0;
+}
+
+int discnav_get_streams(discnav_t *nav, discnav_stream_type_t type, discnav_stream_info_t *out, int max)
+{
+    int n = 0;
+    pthread_mutex_lock(&nav->lock);
+    if (dvdnav_is_domain_vts(nav->dvd) == 1) {
+        for (int i = 0; i < (type == DISCNAV_AUDIO ? 8 : 32) && n < max; i++) {
+            discnav_stream_info_t *st = &out[n];
+            memset(st, 0, sizeof(*st));
+            st->index = i;
+            st->format = "";
+            if (type == DISCNAV_AUDIO) {
+                int phys = dvdnav_get_audio_logical_stream(nav->dvd, i); /* logical -> physical */
+                audio_attr_t a;
+                if (phys < 0 || dvdnav_get_audio_attr(nav->dvd, i, &a) != DVDNAV_STATUS_OK)
+                    continue;
+                st->id = audio_stream_id(nav, i, phys);
+                if (a.lang_type == 1)
+                    lang_of(a.lang_code, st->lang);
+                st->kind = a.code_extension == 2 ? DISCNAV_KIND_VISUALLY_IMPAIRED
+                         : a.code_extension == 3 || a.code_extension == 4 ? DISCNAV_KIND_COMMENTARY
+                         : DISCNAV_KIND_NORMAL;
+                switch (a.audio_format) {
+                case DVD_AUDIO_FORMAT_AC3:       st->format = "ac3"; break;
+                case DVD_AUDIO_FORMAT_DTS:       st->format = "dts"; break;
+                case DVD_AUDIO_FORMAT_LPCM:      st->format = "lpcm"; break;
+                case DVD_AUDIO_FORMAT_MPEG:
+                case DVD_AUDIO_FORMAT_MPEG2_EXT: st->format = "mpeg"; break;
+                case DVD_AUDIO_FORMAT_SDDS:      st->format = "sdds"; break;
+                }
+                st->channels = a.channels + 1;
+                st->selected = st->id >= 0 && st->id == nav->want_aid;
+            } else {
+                int phys = dvdnav_get_spu_logical_stream(nav->dvd, i);
+                subp_attr_t a;
+                if (phys < 0 || dvdnav_get_spu_attr(nav->dvd, i, &a) != DVDNAV_STATUS_OK)
+                    continue;
+                st->id = 0x20 + (phys & 0x1f);
+                if (a.type == 1)
+                    lang_of(a.lang_code, st->lang);
+                switch (a.code_extension) {
+                case 2: case 6: case 14: st->kind = DISCNAV_KIND_LARGE; break;
+                case 3: case 7: case 15: st->kind = DISCNAV_KIND_CHILDREN; break;
+                case 9:                  st->kind = DISCNAV_KIND_FORCED; break;
+                case 13:                 st->kind = DISCNAV_KIND_COMMENTARY; break;
+                default:                 st->kind = DISCNAV_KIND_NORMAL; break;
+                }
+                if (a.code_extension >= 5 && a.code_extension <= 7)
+                    st->kind = DISCNAV_KIND_CAPTIONS;
+                st->selected = st->id == nav->want_sid && !nav->sub_forced_only;
+            }
+            n++;
+        }
+    }
+    pthread_mutex_unlock(&nav->lock);
+    return n;
+}
+
+bool discnav_select_stream(discnav_t *nav, discnav_stream_type_t type, int index)
+{
+    pthread_mutex_lock(&nav->lock);
+    bool ok = dvdnav_is_domain_vts(nav->dvd) == 1;
+    if (ok && type == DISCNAV_AUDIO) {
+        int phys = index >= 0 ? dvdnav_get_audio_logical_stream(nav->dvd, index) : -1;
+        ok = phys >= 0 && dvdnav_set_active_stream(nav->dvd, index, DVD_AUDIO_STREAM) == DVDNAV_STATUS_OK;
+        if (ok)
+            nav->want_aid = audio_stream_id(nav, index, phys);
+    } else if (ok && index < 0) {
+        ok = dvdnav_toggle_spu_stream(nav->dvd, 0) == DVDNAV_STATUS_OK;
+        if (ok)
+            nav->sub_forced_only = true;
+    } else if (ok) {
+        int phys = dvdnav_get_spu_logical_stream(nav->dvd, index);
+        ok = phys >= 0 && dvdnav_set_active_stream(nav->dvd, index, DVD_SUBTITLE_STREAM) == DVDNAV_STATUS_OK &&
+             dvdnav_toggle_spu_stream(nav->dvd, 1) == DVDNAV_STATUS_OK;
+        if (ok) {
+            nav->want_sid = 0x20 + (phys & 0x1f);
+            nav->sub_forced_only = false;
+        }
+    }
+    logf_(nav, 0, "user: %s stream %d%s", type == DISCNAV_AUDIO ? "audio" : "subtitle", index, ok ? "" : " (refused)");
+    /* tell the player now rather than when the reader gets there */
+    if (ok)
+        emit(nav, DISCNAV_EVENT_TRACKS);
+    pthread_mutex_unlock(&nav->lock);
+    return ok;
 }
 
 bool discnav_get_position(discnav_t *nav, int *title, double *seconds, double *length)
@@ -663,6 +828,8 @@ discnav_t *discnav_open(const char *device, const char *lang,
     nav->on_log = on_log;
     nav->user = user;
     nav->want_aid = nav->want_sid = -1;
+    nav->menu_key = -1;
+    nav->root_pending = true;
     pthread_mutex_init(&nav->lock, NULL);
     pthread_mutex_init(&nav->olock, NULL);
     pthread_cond_init(&nav->wake, NULL);
