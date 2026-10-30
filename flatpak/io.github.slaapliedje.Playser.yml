@@ -200,6 +200,10 @@ modules:
         url: https://github.com/mpv-player/mpv.git
         tag: v0.41.0
         commit: 41f6a645068483470267271e1d09966ca3b9f413
+      # passthrough survives starting mid-stream (resume, seek): a packet the
+      # spdif muxer rejects is dropped instead of failing the decoder
+      - type: patch
+        path: patches/mpv-spdif-drop-bad-packets.patch
 
   - name: playser
     buildsystem: cmake-ninja

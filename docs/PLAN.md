@@ -263,6 +263,14 @@ Status (2026-10-28), `app/`:
   once, then tries passthrough again after 20 s; a second failure leaves it
   decoded with a notice. Verified on the box with a paplay stand-in on HDMI
   removed after 14 s: PCM at 0.2 s, `spdif-truehd` from 20.3 s.
+- ✅ **Passthrough after resume** (2026-10-29): resuming *Back to the
+  Future* at 37:31 started DTS-HD on an extension packet without its core;
+  FFmpeg's spdif muxer rejects it ("stray DTS-HD frame") and mpv 0.41 then
+  fails the whole decoder, so the watchdog fell back to decoding. The
+  Flatpak's mpv carries `flatpak/patches/mpv-spdif-drop-bad-packets.patch`:
+  a rejected packet is dropped, and before any output the muxer starts
+  over on the next one. Verified on the box: same resume, passthrough held.
+  Worth sending upstream.
 - ⬜ Add the dummy-stream blocker to the SteamOS issue.
 - ✅ **4K UHD drive check** (2026-10-29): `SystemCheck::checkUhdDrives()`
   runs `makemkvcon -r info dev:/dev/srN` when a disc goes in (not during

@@ -1,0 +1,31 @@
+--- a/audio/decode/ad_spdif.c
++++ b/audio/decode/ad_spdif.c
+@@ -47,6 +47,7 @@
+     int              out_buffer_len;
+     uint8_t          out_buffer[OUTBUF_SIZE];
+     bool             need_close;
++    bool             got_output;
+     bool             use_dts_hd;
+     struct mp_aframe *fmt;
+     int              sstride;
+@@ -336,9 +337,18 @@
+     int ret = av_write_frame(spdif_ctx->lavf_ctx, spdif_ctx->avpkt);
+     avio_flush(spdif_ctx->lavf_ctx->pb);
+     if (ret < 0) {
+-        MP_ERR(da, "spdif mux error: '%s'\n", mp_strerror(AVUNERROR(ret)));
+-        goto done;
++        // Joining a stream mid-way (seek, resume) can start on a packet the
++        // muxer rejects, such as a DTS-HD extension without its core frame:
++        // drop it instead of failing the decoder. Before any output, start
++        // over so the format is taken from a packet that muxes.
++        MP_WARN(da, "spdif mux error: '%s', dropping packet\n", mp_strerror(AVUNERROR(ret)));
++        if (!spdif_ctx->got_output)
++            ad_spdif_destroy(da);
++        talloc_free(mpkt);
++        mp_filter_internal_mark_progress(da);
++        return;
+     }
++    spdif_ctx->got_output = true;
+ 
+     out = mp_aframe_new_ref(spdif_ctx->fmt);
+     int samples = spdif_ctx->out_buffer_len / spdif_ctx->sstride;
