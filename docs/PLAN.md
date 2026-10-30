@@ -248,7 +248,18 @@ Status (2026-10-28), `app/`:
   decoded with a notice. Verified on the box with a paplay stand-in on HDMI
   removed after 14 s: PCM at 0.2 s, `spdif-truehd` from 20.3 s.
 - ⬜ Add the dummy-stream blocker to the SteamOS issue.
-- ⬜ UHD vs Blu-ray detection (LibreDrive check on the setup screen).
+- ✅ **4K UHD drive check** (2026-10-29): `SystemCheck::checkUhdDrives()`
+  runs `makemkvcon -r info dev:/dev/srN` when a disc goes in (not during
+  playback) and when Setup opens. MakeMKV prints `MSG:1011 "Using LibreDrive
+  mode (vX)"` before `MSG:3007 "Using direct disc access mode"`, which comes
+  either way, so it stops there (~8 s on the box, not the 37 s scan). Only
+  trusted with Blu-ray files present (DRV flags & 4), kept per drive
+  vendor/model/firmware in settings `uhd/`. Setup shows a "4K UHD discs"
+  row; a 4K disc (TheDiscDB, else `index.bdmv` version `INDX0300`) in a
+  drive without LibreDrive says so on its card, and Play opens Setup.
+  Playback stops a running check first. Verified: ASUS BW-16D1HT
+  LibreDrive 06.3 (desktop), Optiarc BC-5500S none (box), and Play pressed
+  during a check still opens the disc.
 - ✅ **An installed MakeMKV Flatpak is preferred** (2026-10-29): the
   manifest grants read access to `com.makemkv.MakeMKV`'s install folder
   (user and system), and `setupDecryption()` uses its libmmbd/makemkvcon
@@ -278,7 +289,7 @@ Status (2026-10-28), `app/`:
   Register in MakeMKV, the `sg` commands). Choosing a Blu-ray while not
   ready opens it instead of failing. Verified on the box (all ready, 4K)
   and on the desktop with the key missing.
-- ⬜ LibreDrive check (for UHD) on the setup screen. Learned on the box
+- ✅ LibreDrive check (for UHD) on the setup screen (see above). Learned on the box
   (2026-10-29, MakeMKV 2.0.0 copied in for testing):
   - libbluray appends `.so.0` itself: `LIBAACS_PATH=<dir>/libmmbd`.
   - libmmbd runs `makemkvcon` (found via `MAKEMKVCON`), which needs

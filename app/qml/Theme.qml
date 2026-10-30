@@ -13,6 +13,7 @@ QtObject {
     readonly property color accent: "#f5b942"
     readonly property color text: "#eef1f6"
     readonly property color textDim: "#8a94a6"
+    readonly property color warning: "#ff6b6b"
     readonly property color focusRing: accent
 
     readonly property int fontHuge: 64 * scale

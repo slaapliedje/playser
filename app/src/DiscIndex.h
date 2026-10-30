@@ -33,9 +33,10 @@ void resolvePlaylists(QVariantMap &disc, const QVariantList &playlists);
 QVariantMap lookup(const QString &contentHash);
 
 // What a Blu-ray says about itself (BDMV/META/DL/bdmt_<lang>.xml, the
-// "disc library" metadata, English preferred): { title, art } where art is
-// the path of its largest thumbnail; either may be missing, and DVDs have
-// neither. Reads the disc: call it off the GUI thread.
+// "disc library" metadata, English preferred): { title, art, format } where
+// art is the path of its largest thumbnail and format is "UHD" for a 4K disc
+// (from BDMV/index.bdmv); any may be missing, and DVDs have none. Reads the
+// disc: call it off the GUI thread.
 QVariantMap discMeta(const QString &discRoot);
 
 } // namespace DiscIndex

@@ -1,10 +1,13 @@
 #pragma once
 
 #include <QObject>
+#include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
 // What Blu-ray playback needs, for the setup screen. Never reads the MakeMKV
 // key itself, only whether one is present.
+class QProcess;
+
 class SystemCheck : public QObject
 {
     Q_OBJECT
@@ -22,6 +25,10 @@ class SystemCheck : public QObject
     // the last restart, so it isn't active yet (see setPassthroughRule)
     Q_PROPERTY(bool passthroughRule READ passthroughRule NOTIFY changed)
     Q_PROPERTY(bool passthroughRulePending READ passthroughRulePending NOTIFY changed)
+    // 4K UHD needs a drive MakeMKV can put in LibreDrive mode. Per drive
+    // ("/dev/sr0"): { name, state, version }, state "yes" | "no" | "checking"
+    // | "unknown" (no Blu-ray in it yet to check with)
+    Q_PROPERTY(QVariantMap uhdDrives READ uhdDrives NOTIFY changed)
 
 public:
     explicit SystemCheck(QObject *parent = nullptr);
@@ -34,19 +41,30 @@ public:
 
     bool passthroughRule() const { return m_passthroughRule; }
     bool passthroughRulePending() const { return m_passthroughRulePending; }
+    QVariantMap uhdDrives() const { return m_uhdDrives; }
 
     Q_INVOKABLE void refresh();
     // installs or removes the rule; false if the file couldn't be written
     Q_INVOKABLE bool setPassthroughRule(bool installed);
+    // asks MakeMKV about drives not checked before that have a disc in;
+    // the answer is kept per drive model and firmware
+    Q_INVOKABLE void checkUhdDrives();
+    // before playback: MakeMKV can't share the drive with a check
+    Q_INVOKABLE void stopUhdChecks();
 
 signals:
     void changed();
 
 private:
+    void updateUhdDrives();
+    void probeUhd(const QString &device, const QString &key);
+
     QString m_makemkv;
     bool m_hasKey = false;
     int m_opticalDrives = 0;
     bool m_scsiGeneric = false;
     bool m_passthroughRule = false;
     bool m_passthroughRulePending = false;
+    QVariantMap m_uhdDrives;
+    QHash<QString, QProcess *> m_probes; // device -> running makemkvcon
 };

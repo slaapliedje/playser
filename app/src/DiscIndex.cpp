@@ -172,16 +172,21 @@ void DiscIndex::resolvePlaylists(QVariantMap &disc, const QVariantList &playlist
 
 QVariantMap DiscIndex::discMeta(const QString &discRoot)
 {
+    QVariantMap meta;
+    // index.bdmv's version: "0300" is a 4K UHD disc, "0100"/"0200" Blu-ray
+    QFile index(QDir(discRoot).filePath("BDMV/index.bdmv"));
+    if (index.open(QIODevice::ReadOnly) && index.read(8) == "INDX0300")
+        meta.insert("format", QStringLiteral("UHD"));
+
     const QDir dir(QDir(discRoot).filePath("BDMV/META/DL"));
     QStringList files = dir.entryList({ "bdmt_*.xml", "BDMT_*.XML" }, QDir::Files);
     if (files.isEmpty())
-        return {};
+        return meta;
     const int english = files.indexOf(QRegularExpression("bdmt_eng\\.xml", QRegularExpression::CaseInsensitiveOption));
     QFile file(dir.filePath(files.value(qMax(0, english))));
     if (!file.open(QIODevice::ReadOnly))
-        return {};
+        return meta;
 
-    QVariantMap meta;
     qint64 artSize = 0;
     QXmlStreamReader xml(&file);
     while (!xml.atEnd()) {

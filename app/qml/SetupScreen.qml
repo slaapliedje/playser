@@ -16,6 +16,7 @@ FocusScope {
 
     function open() {
         check.refresh()
+        check.checkUhdDrives()
         visible = true
         buttons.forceActiveFocus()
     }
@@ -28,6 +29,23 @@ FocusScope {
 
     Keys.onEscapePressed: close()
     Keys.onBackPressed: close()
+
+    // one sentence per drive about 4K UHD discs
+    function uhdText() {
+        const drives = Object.values(check.uhdDrives)
+        if (drives.length === 0)
+            return "No disc drive connected."
+        return drives.map(d =>
+            d.state === "yes" ? "The " + d.name + " can play them (LibreDrive " + d.version + ")."
+            : d.state === "no" ? "The " + d.name + " can't: 4K discs need a drive MakeMKV can use in "
+                                 + "LibreDrive mode (the MakeMKV forum lists them). Blu-rays and DVDs still play."
+            : d.state === "checking" ? "Checking the " + d.name + "…"
+            : "Put a Blu-ray or 4K disc in the " + d.name + " to check it.").join(" ")
+    }
+    function uhdOk() {
+        const states = Object.values(check.uhdDrives).map(d => d.state)
+        return states.length === 0 ? null : states.includes("yes") ? true : states.includes("no") ? false : null
+    }
 
     readonly property var items: [
         {
@@ -55,6 +73,11 @@ FocusScope {
                 : "SteamOS doesn't load the Linux \"sg\" driver MakeMKV needs. Once, in Desktop Mode, open "
                   + "Konsole and run:\n    sudo modprobe sg\n    echo sg | sudo tee /etc/modules-load.d/sg.conf\n"
                   + "then unplug the drive and plug it back in."
+        },
+        {
+            ok: root.uhdOk(),
+            title: "4K UHD discs (optional)",
+            text: root.uhdText()
         },
         {
             ok: !root.passthrough ? null : !check.passthroughRule ? false
@@ -104,7 +127,7 @@ FocusScope {
 
                 Text {
                     text: modelData.ok === null ? "–" : modelData.ok ? "✓" : "✗"
-                    color: modelData.ok === null ? Theme.textDim : modelData.ok ? Theme.accent : "#ff6b6b"
+                    color: modelData.ok === null ? Theme.textDim : modelData.ok ? Theme.accent : Theme.warning
                     font.pixelSize: Theme.fontLarge
                     font.weight: Font.Bold
                     width: Theme.fontLarge
@@ -161,8 +184,10 @@ FocusScope {
             }
         }
         Keys.onReturnPressed: {
-            if (currentIndex === 0)
+            if (currentIndex === 0) {
                 root.check.refresh()
+                root.check.checkUhdDrives()
+            }
             else if (currentIndex === 1)
                 root.passthroughToggled()
             else

@@ -259,6 +259,8 @@ void DiscMonitor::identify(const QString &blockPath, const QString &mountPoint)
             disc.insert("title", meta.value("title"));
         if (meta.contains("art"))
             disc.insert("art", meta.value("art"));
+        if (!disc.contains("format") && meta.contains("format"))
+            disc.insert("format", meta.value("format"));
         QMetaObject::invokeMethod(self, [self, blockPath, mountPoint, hash, disc, known] {
             if (!self)
                 return;

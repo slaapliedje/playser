@@ -22,6 +22,11 @@ FocusScope {
 
     DiscMonitor { id: discs }
     SystemCheck { id: system }
+    // a newly inserted disc lets MakeMKV say whether the drive reads 4K UHD
+    Connections {
+        target: discs
+        function onDrivesChanged() { if (!player.active) system.checkUhdDrives() }
+    }
     Settings {
         id: settings
         property bool setupSeen: false
@@ -57,13 +62,17 @@ FocusScope {
         anchors.fill: parent
         visible: !player.active
         monitor: discs
+        check: system
         focus: !player.active
         onSetupRequested: root.showSetup()
         onPlayRequested: drive => {
-            // a Blu-ray can't play without MakeMKV: say why instead of failing
+            system.stopUhdChecks() // MakeMKV needs the drive to itself
+            // a Blu-ray can't play without MakeMKV, nor a 4K disc without a
+            // drive it can read them with: say why instead of failing
             if (drive.kind === "bluray") {
                 system.refresh()
-                if (!system.ready) {
+                const uhd = system.uhdDrives[drive.device] || {}
+                if (!system.ready || (drive.disc && drive.disc.format === "UHD" && uhd.state === "no")) {
                     root.showSetup()
                     return
                 }

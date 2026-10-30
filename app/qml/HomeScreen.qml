@@ -5,6 +5,7 @@ FocusScope {
     id: root
 
     required property DiscMonitor monitor
+    property SystemCheck check
     signal playRequested(var drive)
     signal setupRequested()
 
@@ -81,6 +82,9 @@ FocusScope {
         readonly property bool playable: !!drive.url
         readonly property var disc: drive.disc || ({})
         readonly property bool known: !!disc.title
+        // a 4K disc in a drive MakeMKV can't read them with
+        readonly property bool uhdUnsupported: disc.format === "UHD" && !!root.check
+            && (root.check.uhdDrives[drive.device] || {}).state === "no"
         readonly property string kindLabel: disc.format === "UHD" ? "4K UHD" : ({
             "bluray": "Blu-ray", "dvd": "DVD", "cd": "CD", "none": "No disc", "unknown": "Disc"
         })[drive.kind] || drive.kind
@@ -164,8 +168,9 @@ FocusScope {
             }
             Text {
                 width: parent.width
-                text: drive.model + "  ·  " + drive.device
-                color: Theme.textDim
+                text: uhdUnsupported ? "This drive can't play 4K UHD discs"
+                                     : drive.model + "  ·  " + drive.device
+                color: uhdUnsupported ? Theme.warning : Theme.textDim
                 font.pixelSize: Theme.fontSmall
                 elide: Text.ElideRight
             }
