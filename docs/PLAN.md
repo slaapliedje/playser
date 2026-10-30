@@ -406,12 +406,20 @@ Status (2026-10-30):
   a resume point with its URL (`dvd://N`), which the disc page's Resume
   plays directly. Setup has "DVD menus: On/Off" (off: the disc page opens,
   Play = main feature). Activating a button shows its action colours
-  until the jump (too brief to capture in a screenshot).
-- ⬜ Open: one run in ~40 of the test suite lost the highlight after
-  "down" (not reproduced in 27 targeted runs; stray input from the
-  desktop session, seen in other runs, is a suspect); a real commercial
-  DVD on the box; SPU timing (menu graphics are shown when decoded, up
-  to the read-ahead early); `DVDNAV_WAIT` skipped at once.
+  until the jump (seen in a test screenshot: red outline).
+- ✅ Seeking in titles through menus (2026-10-30): `discnav_seek`
+  (`dvdnav_time_search`) and the title length in `discnav_get_position`;
+  left/right seek −10/+30 s, LB/RB skip chapters, and the OSD shows the
+  title's time and progress. The menu overlay's rectangle is now worked
+  out from `video-params` (dw/dh) and the window, not osd-dimensions'
+  margins, which read as "no video" between segments (a stretched
+  highlight once).
+- ✅ Test flakiness (1 in ~40 runs) was the harness: mpv's screenshot is
+  async, so the next scripted key could change the menu first. The
+  script runner now waits 300 ms after a shot.
+- ⬜ Open: a real commercial DVD on the box; SPU timing (menu graphics
+  are shown when decoded, up to the read-ahead early); `DVDNAV_WAIT`
+  skipped at once.
 - ✅ Tests: `tools/test-dvd-menus.py` drives the app through the test DVD
   (11 checks: highlights, subtitle colours, title end, motion menu,
   chapter skip, menu call, B home) from screenshots and the nav log.

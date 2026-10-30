@@ -232,6 +232,22 @@ void Mpv::load(const QString &url, const QVariantMap &options, double start)
         command({ "loadfile", url });
 }
 
+// The video fitted into the window and centred, as mpv draws it (the app
+// uses no zoom or pan). Worked out here rather than from osd-dimensions'
+// margins, which read as no video for a moment between files.
+void Mpv::updateVideoRect()
+{
+    QRect rect;
+    if (!m_videoDisplay.isEmpty() && !m_osdSize.isEmpty()) {
+        const QSize fit = m_videoDisplay.scaled(m_osdSize, Qt::KeepAspectRatio);
+        rect = QRect(QPoint((m_osdSize.width() - fit.width()) / 2, (m_osdSize.height() - fit.height()) / 2), fit);
+    }
+    if (rect != m_videoRect) {
+        m_videoRect = rect;
+        emit videoGeometryChanged();
+    }
+}
+
 void Mpv::loadFile(const QString &url, const QStringList &fileOptions)
 {
     command({ "loadfile", url, "replace", -1, fileOptions.join(',') });
@@ -411,13 +427,7 @@ void Mpv::processEvents()
                     m_osdSize = size;
                     emit osdSizeChanged();
                 }
-                const int ml = d.value("ml").toInt(), mt = d.value("mt").toInt();
-                const QRect video(ml, mt, size.width() - ml - d.value("mr").toInt(),
-                                  size.height() - mt - d.value("mb").toInt());
-                if (video != m_videoRect) {
-                    m_videoRect = video;
-                    emit videoGeometryChanged();
-                }
+                updateVideoRect();
                 break;
             }
             case PropSeeking: m_seeking = has && *static_cast<int *>(p->data); break;
@@ -429,8 +439,11 @@ void Mpv::processEvents()
                 const QVariantMap params = has ? nodeToVariant(static_cast<mpv_node *>(p->data)).toMap() : QVariantMap();
                 if (ev->reply_userdata == PropVideoParams) {
                     const QSize size(params.value("w").toInt(), params.value("h").toInt());
-                    if (size != m_videoSize) {
+                    const QSize display(params.value("dw").toInt(), params.value("dh").toInt());
+                    if (size != m_videoSize || display != m_videoDisplay) {
                         m_videoSize = size;
+                        m_videoDisplay = display;
+                        updateVideoRect();
                         emit videoGeometryChanged();
                     }
                 }

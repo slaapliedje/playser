@@ -250,10 +250,15 @@ bool DiscNav::action(const QString &name)
 QVariantMap DiscNav::position() const
 {
     int title = 0;
-    double seconds = 0;
-    if (!m_ctx || !discnav_get_position(m_ctx->nav, &title, &seconds))
+    double seconds = 0, length = 0;
+    if (!m_ctx || !discnav_get_position(m_ctx->nav, &title, &seconds, &length))
         return {};
-    return { { "title", title }, { "seconds", seconds } };
+    return { { "title", title }, { "seconds", seconds }, { "length", length } };
+}
+
+bool DiscNav::seek(double seconds)
+{
+    return m_ctx && discnav_seek(m_ctx->nav, seconds);
 }
 
 void DiscNav::load()
@@ -398,6 +403,8 @@ void DiscNav::renderOverlay()
         m_overlayShown = false;
         return;
     }
+    qCDebug(lcNav, "overlay %dx%d onto %d,%d %dx%d", frame.width(), frame.height(), m_mpv->videoRect().x(),
+            m_mpv->videoRect().y(), m_mpv->videoRect().width(), m_mpv->videoRect().height());
     const QImage bgra = rgba.convertToFormat(QImage::Format_ARGB32_Premultiplied);
     m_mpv->setOverlay(kMenuOverlay, m_encoder.encode(bgra, m_mpv->transfer()), m_mpv->videoRect());
     m_overlayShown = true;

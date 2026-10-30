@@ -153,10 +153,27 @@ FocusScope {
         }
     }
 
+    // where a title played through the disc's menus is: { title, seconds,
+    // length }, polled while the OSD shows it
+    property var navPosition: ({})
+    Timer {
+        interval: 500
+        repeat: true
+        triggeredOnStart: true
+        running: root.navigating && !root.nav.inMenu && osd.visible
+        onTriggered: root.navPosition = root.nav.position()
+    }
+
+    function navSeek(delta) {
+        const p = nav.position()
+        if (p.title)
+            nav.seek(p.seconds + delta)
+        showOsd()
+    }
+
     // Through the disc's menus: d-pad and A work its buttons, B goes to the
-    // menu above (or stops at the top); during a title Start opens the disc
-    // menu, View the title menu, and left/right skip chapters (a disc
-    // played this way can't seek).
+    // menu above (or stops at the top); during a title left/right seek,
+    // LB/RB skip chapters, Start opens the disc menu, View the title menu.
     function navKey(key) {
         if (nav.inMenu) {
             switch (key) {
@@ -171,9 +188,9 @@ FocusScope {
             }
         } else {
             switch (key) {
-            case Qt.Key_Left:
+            case Qt.Key_Left: navSeek(-10); return true
+            case Qt.Key_Right: navSeek(30); return true
             case Qt.Key_PageUp: nav.action("previous"); showOsd(); return true
-            case Qt.Key_Right:
             case Qt.Key_PageDown: nav.action("next"); showOsd(); return true
             }
         }
@@ -288,9 +305,9 @@ FocusScope {
                 elide: Text.ElideRight
             }
 
-            // (a disc through its menus plays in segments: no useful times)
+            // (through a disc's menus mpv plays segments, so the times come
+            // from the disc: navPosition)
             Rectangle {
-                visible: !root.navigating
                 width: parent.width
                 height: 10 * Theme.scale
                 radius: height / 2
@@ -299,8 +316,9 @@ FocusScope {
                     height: parent.height
                     radius: parent.radius
                     color: Theme.accent
-                    width: root.mpv.duration > 0
-                           ? parent.width * Math.min(1, root.mpv.position / root.mpv.duration) : 0
+                    width: root.navigating
+                           ? (root.navPosition.length > 0 ? parent.width * Math.min(1, root.navPosition.seconds / root.navPosition.length) : 0)
+                           : root.mpv.duration > 0 ? parent.width * Math.min(1, root.mpv.position / root.mpv.duration) : 0
                 }
             }
 
@@ -325,8 +343,9 @@ FocusScope {
                     }
                     Text {
                         id: timeText
-                        text: (root.mpv.paused ? "" : "▶  ") + (root.navigating ? (root.mpv.paused ? "Paused" : "Playing")
-                              : Theme.formatTime(root.mpv.position) + " / " + Theme.formatTime(root.mpv.duration))
+                        text: (root.mpv.paused ? "" : "▶  ")
+                              + (root.navigating ? Theme.formatTime(root.navPosition.seconds || 0) + " / " + Theme.formatTime(root.navPosition.length || 0)
+                                                 : Theme.formatTime(root.mpv.position) + " / " + Theme.formatTime(root.mpv.duration))
                         color: Theme.text
                         font.pixelSize: Theme.fontSmall
                     }
@@ -344,7 +363,8 @@ FocusScope {
                 textSize: Theme.fontSmall * 0.85
                 hints: root.navigating ? [
                     { buttons: ["south"], text: root.mpv.paused ? "Play" : "Pause" },
-                    { buttons: ["dpadH"], text: "Chapter" },
+                    { buttons: ["dpadH"], text: "Seek" },
+                    { buttons: ["lb", "rb"], text: "Chapter" },
                     { buttons: ["start"], text: "Disc menu" },
                     { buttons: ["north"], text: "Audio & subtitles" },
                     { buttons: ["east"], text: "Stop" },

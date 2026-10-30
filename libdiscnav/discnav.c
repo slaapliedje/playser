@@ -71,6 +71,8 @@ struct discnav {
     uint32_t rgb_clut[16];
     bool have_clut;
     int cur_button;
+    int length_title;       /* the title length_secs is for */
+    double length_secs;
 };
 
 struct discnav_stream {
@@ -576,7 +578,20 @@ void discnav_get_tracks(discnav_t *nav, discnav_tracks_t *t)
     pthread_mutex_unlock(&nav->lock);
 }
 
-bool discnav_get_position(discnav_t *nav, int *title, double *seconds)
+/* Called with lock held: the length of title t, cached. */
+static double title_length(discnav_t *nav, int t)
+{
+    if (t != nav->length_title) {
+        uint64_t *times = NULL, duration = 0;
+        dvdnav_describe_title_chapters(nav->dvd, t, &times, &duration);
+        free(times);
+        nav->length_title = t;
+        nav->length_secs = duration / 90000.0;
+    }
+    return nav->length_secs;
+}
+
+bool discnav_get_position(discnav_t *nav, int *title, double *seconds, double *length)
 {
     pthread_mutex_lock(&nav->lock);
     int32_t t = 0, part = 0;
@@ -584,6 +599,31 @@ bool discnav_get_position(discnav_t *nav, int *title, double *seconds)
     if (ok) {
         *title = t;
         *seconds = dvdnav_get_current_time(nav->dvd) / 90000.0;
+        if (length)
+            *length = title_length(nav, t);
+    }
+    pthread_mutex_unlock(&nav->lock);
+    return ok;
+}
+
+bool discnav_seek(discnav_t *nav, double seconds)
+{
+    pthread_mutex_lock(&nav->lock);
+    int32_t t = 0, part = 0;
+    bool ok = dvdnav_current_title_info(nav->dvd, &t, &part) == DVDNAV_STATUS_OK && t > 0;
+    if (ok) {
+        double length = title_length(nav, t);
+        if (length > 1 && seconds > length - 1)
+            seconds = length - 1;
+        if (seconds < 0)
+            seconds = 0;
+        ok = dvdnav_time_search(nav->dvd, (uint64_t)(seconds * 90000)) == DVDNAV_STATUS_OK;
+    }
+    logf_(nav, 1, "user: seek to %.1f s%s", seconds, ok ? "" : " (refused)");
+    if (ok) {
+        nav->user_jump = true;
+        nav->gen++;
+        pthread_cond_broadcast(&nav->wake);
     }
     pthread_mutex_unlock(&nav->lock);
     return ok;

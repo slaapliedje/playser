@@ -99,13 +99,14 @@ def main():
           str(s[3].at(100, 450)))
 
     # 2. motion menu, its buttons side by side, title 1 from it, chapter
-    #    skip, the disc menu from the title, B at the top menu goes home
-    log = run(opt.app, "4,down,down,enter,3,shot,right,1,shot,enter,3,right,2,menu,3,shot,enter,3,back,3,shot,quit",
+    #    skip, seek, the disc menu from the title, B at the top menu goes home
+    log = run(opt.app, "4,down,down,enter,3,shot,right,1,shot,enter,3,pgdn,2,left,2,menu,3,shot,enter,3,back,3,shot,quit",
               out / "b")
     s = [Shot(out / f"b/shot-0{i}.png") for i in range(1, 4)]
     check("motion menu, first button", outlined(s[0], VTS_BUTTONS[0]) and not outlined(s[0], VTS_BUTTONS[1]))
     check("right moves the highlight", outlined(s[1], VTS_BUTTONS[1]))
     check("chapter skip", "user: next chapter" in log)
+    check("seek in a title", any(l.startswith("user: seek to") and "refused" not in l for l in log))
     check("disc menu from a title", "user: root menu" in log and outlined(s[2], VTS_BUTTONS[0]))
     check("B at the top menu goes home", "user: go up (refused)" in log and ui_shown(out / "b/shot-04-ui.png"))
 

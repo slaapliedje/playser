@@ -89,6 +89,10 @@ static void runScript(UiRenderer *ui, Mpv *mpv, QStringList steps, const QString
             ui->lastFrame().save(base + "-ui.png");
             mpv->screenshot(base + ".png"); // fails while idle (no video)
             qInfo("script: saved %s", qPrintable(base));
+            // mpv captures asynchronously: give it time before the next
+            // step changes what's on screen
+            QTimer::singleShot(300, ui, [=] { runScript(ui, mpv, steps, shotDir, shot); });
+            return;
         } else if (keys.contains(step)) {
             ui->deliverKey(keys.value(step));
         } else {

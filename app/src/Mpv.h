@@ -73,7 +73,8 @@ public:
     void setPassthrough(const QString &codecs);
     QVariantList tracks() const { return m_tracks; }
     QSize osdSize() const { return m_osdSize; }
-    // where the video is drawn in the window, and its storage size
+    // where the video is drawn in the window (empty without video), and its
+    // storage size
     QRect videoRect() const { return m_videoRect; }
     QSize videoSize() const { return m_videoSize; }
     // The audio watchdog takes a clock standing still for a failing audio
@@ -119,6 +120,7 @@ private:
         bool shown = false;
     };
     void sendOverlay(int id, const QImage &image, const QRect &dst);
+    void updateVideoRect();
     void checkAudioStall();
     void applySpdif(bool on);
     void onAudioOutputBusy();
@@ -135,6 +137,7 @@ private:
     QVariantList m_tracks;
     QSize m_osdSize;
     QRect m_videoRect;
+    QSize m_videoDisplay; // the video's display size (aspect applied)
     bool m_stallCheck = true;
     QSize m_videoSize;
     Transfer m_transfer = Transfer::Sdr;
