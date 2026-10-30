@@ -109,7 +109,7 @@ def main():
     check("disc menu from a title", "user: root menu" in log and outlined(s[2], VTS_BUTTONS[0]))
     check("B at the top menu goes home", "user: go up (refused)" in log and ui_shown(out / "b/shot-04-ui.png"))
 
-    print(f"\n{len(failures)} failed" if failures else "\nall passed", f"(screenshots: {out})")
+    print(f"\n{len(failures)} failed: {', '.join(failures)}" if failures else "\nall passed", f"(screenshots: {out})")
     return 1 if failures else 0
 
 
