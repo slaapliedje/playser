@@ -13,6 +13,10 @@
  *   FLUSH. The overlay callbacks come on libbluray's BD-J thread, possibly
  *   while it holds its own lock, which the reader thread waits for inside
  *   bd_read_ext() with ours held: they only take the overlay lock.
+ * - HDMV menus (the IG plane) come as palette images, RLE-compressed with
+ *   a YCbCr palette, drawn here into a back buffer and shown on FLUSH. They
+ *   come from inside bd_read_ext() or bd_user_input(), our lock held.
+ *   libbluray leaves subtitles (PG) to the player unless told to decode them.
  * - A segment ends where timestamps start over: a new playlist, a seek
  *   (including a looping menu's restart), a discontinuity or a stopped
  *   playlist.
@@ -70,9 +74,9 @@ struct nav_impl {
     pthread_mutex_t olock;      /* guards the planes; never taken with lock wanted */
     BD_ARGB_BUFFER argb;        /* libbluray draws into argb.buf[plane] */
     uint32_t *front[PLANES];    /* the last flushed frames */
+    uint32_t *hdmv[PLANES];     /* HDMV: the frame being drawn */
     int pw, ph;
     bool graphics;              /* something visible in the IG plane */
-    bool hdmv_warned;
 };
 
 struct nav_stream {
@@ -117,21 +121,58 @@ static bool plane_visible(const uint32_t *p, size_t n)
     return false;
 }
 
+/* All planes closed. */
+static void close_planes(nav_impl_t *nav)
+{
+    pthread_mutex_lock(&nav->olock);
+    for (int p = 0; p < PLANES; p++) {
+        if (nav->front[p])
+            memset(nav->front[p], 0, (size_t)nav->pw * nav->ph * 4);
+        if (nav->hdmv[p])
+            memset(nav->hdmv[p], 0, (size_t)nav->pw * nav->ph * 4);
+    }
+    bool was = nav->graphics;
+    nav->graphics = false;
+    pthread_mutex_unlock(&nav->olock);
+    emit(nav, DISCNAV_EVENT_OVERLAY);
+    if (was)
+        emit(nav, DISCNAV_EVENT_TRACKS);
+}
+
+/* After a command on plane p (olock held; released here). */
+static void plane_changed(nav_impl_t *nav, int p, bool changed)
+{
+    bool shown = nav->graphics;
+    if (changed && p == PLANE_IG)
+        nav->graphics = nav->front[p] && plane_visible(nav->front[p], (size_t)nav->pw * nav->ph);
+    bool flipped = shown != nav->graphics;
+    pthread_mutex_unlock(&nav->olock);
+    if (flipped)
+        logf_(nav, 1, "graphics %s (plane %d)", nav->graphics ? "shown" : "gone", p);
+    if (changed)
+        emit(nav, DISCNAV_EVENT_OVERLAY);
+    if (flipped)
+        emit(nav, DISCNAV_EVENT_TRACKS); /* in_menu follows the graphics */
+}
+
+/* A plane's front buffer at w x h, cleared (olock held). */
+static bool init_front(nav_impl_t *nav, int p, int w, int h)
+{
+    uint32_t *front = calloc((size_t)w * h, 4);
+    if (!front)
+        return false;
+    free(nav->front[p]);
+    nav->front[p] = front;
+    nav->pw = w;
+    nav->ph = h;
+    return true;
+}
+
 static void argb_overlay(void *handle, const BD_ARGB_OVERLAY *ov)
 {
     nav_impl_t *nav = handle;
     if (!ov) {
-        /* all planes closed */
-        pthread_mutex_lock(&nav->olock);
-        for (int p = 0; p < PLANES; p++)
-            if (nav->front[p])
-                memset(nav->front[p], 0, (size_t)nav->pw * nav->ph * 4);
-        bool was = nav->graphics;
-        nav->graphics = false;
-        pthread_mutex_unlock(&nav->olock);
-        emit(nav, DISCNAV_EVENT_OVERLAY);
-        if (was)
-            emit(nav, DISCNAV_EVENT_TRACKS);
+        close_planes(nav);
         return;
     }
     int p = ov->plane;
@@ -144,19 +185,15 @@ static void argb_overlay(void *handle, const BD_ARGB_OVERLAY *ov)
     pthread_mutex_lock(&nav->olock);
     switch (ov->cmd) {
     case BD_ARGB_OVERLAY_INIT: {
-        size_t n = (size_t)ov->w * ov->h;
-        uint32_t *back = calloc(n, 4), *front = calloc(n, 4);
-        if (!back || !front) {
+        uint32_t *back = calloc((size_t)ov->w * ov->h, 4);
+        if (!back || !init_front(nav, p, ov->w, ov->h)) {
             free(back);
-            free(front);
             break;
         }
         free(nav->argb.buf[p]);
-        free(nav->front[p]);
         nav->argb.buf[p] = back;
-        nav->front[p] = front;
-        nav->argb.width = nav->pw = ov->w;
-        nav->argb.height = nav->ph = ov->h;
+        nav->argb.width = ov->w;
+        nav->argb.height = ov->h;
         changed = true;
         break;
     }
@@ -184,27 +221,98 @@ static void argb_overlay(void *handle, const BD_ARGB_OVERLAY *ov)
     default:
         break;
     }
-    bool shown = nav->graphics;
-    if (changed && p == PLANE_IG)
-        nav->graphics = nav->front[p] && plane_visible(nav->front[p], (size_t)nav->pw * nav->ph);
-    bool flipped = shown != nav->graphics;
-    pthread_mutex_unlock(&nav->olock);
-    if (flipped)
-        logf_(nav, 1, "graphics %s (plane %d)", nav->graphics ? "shown" : "gone", p);
-    if (changed)
-        emit(nav, DISCNAV_EVENT_OVERLAY);
-    if (flipped)
-        emit(nav, DISCNAV_EVENT_TRACKS); /* in_menu follows the graphics */
+    plane_changed(nav, p, changed); /* unlocks */
 }
 
-/* HDMV menus (IG, compressed YUV) come here: not drawn yet (Phase 4) */
+/* A palette entry (limited range, BT.709 as HD video) as ARGB. */
+static uint32_t ycbcr_argb(const BD_PG_PALETTE_ENTRY *e)
+{
+    double y = 1.164 * (e->Y - 16), cb = e->Cb - 128, cr = e->Cr - 128;
+    double rgb[3] = { y + 1.793 * cr, y - 0.213 * cb - 0.533 * cr, y + 2.112 * cb };
+    uint32_t v = (uint32_t)e->T << 24;
+    for (int i = 0; i < 3; i++)
+        v |= (uint32_t)(rgb[i] < 0 ? 0 : rgb[i] > 255 ? 255 : (int)(rgb[i] + 0.5)) << (16 - 8 * i);
+    return v;
+}
+
+/* Decodes an RLE image (runs per line, each line ending in a zero-length
+ * run) into dst at x, y, clipped to the plane. */
+static void draw_rle(uint32_t *dst, int pw, int ph, const BD_OVERLAY *ov)
+{
+    uint32_t lut[256];
+    for (int i = 0; i < 256; i++)
+        lut[i] = i == 0xff ? 0 : ycbcr_argb(&ov->palette[i]);
+    const BD_PG_RLE_ELEM *e = ov->img;
+    for (int y = 0; y < ov->h; y++) {
+        uint32_t *row = ov->y + y < ph ? dst + (size_t)(ov->y + y) * pw : NULL;
+        for (int x = 0; x < ov->w; e++) {
+            if (!e->len)
+                continue; /* a stray line end */
+            int n = e->len < ov->w - x ? e->len : ov->w - x;
+            for (int i = 0; i < n && row && ov->x + x + i < pw; i++)
+                row[ov->x + x + i] = lut[e->color & 0xff];
+            x += n;
+        }
+        if (!e->len)
+            e++;
+    }
+}
+
+/* HDMV menus: libbluray's graphics controller, our lock held */
 static void yuv_overlay(void *handle, const BD_OVERLAY *ov)
 {
     nav_impl_t *nav = handle;
-    if (ov && !nav->hdmv_warned) {
-        nav->hdmv_warned = true;
-        logf_(nav, 0, "HDMV menu graphics aren't drawn yet");
+    if (!ov) {
+        close_planes(nav);
+        return;
     }
+    int p = ov->plane;
+    if (p >= PLANES)
+        return;
+    bool changed = false;
+    pthread_mutex_lock(&nav->olock);
+    size_t n = (size_t)nav->pw * nav->ph;
+    switch (ov->cmd) {
+    case BD_OVERLAY_INIT: {
+        uint32_t *back = calloc((size_t)ov->w * ov->h, 4);
+        if (!back || !init_front(nav, p, ov->w, ov->h)) {
+            free(back);
+            break;
+        }
+        free(nav->hdmv[p]);
+        nav->hdmv[p] = back;
+        changed = true;
+        break;
+    }
+    case BD_OVERLAY_CLOSE:
+        if (nav->front[p])
+            memset(nav->front[p], 0, n * 4);
+        if (nav->hdmv[p])
+            memset(nav->hdmv[p], 0, n * 4);
+        changed = true;
+        break;
+    case BD_OVERLAY_CLEAR:
+    case BD_OVERLAY_HIDE:
+        if (nav->hdmv[p])
+            memset(nav->hdmv[p], 0, n * 4);
+        break;
+    case BD_OVERLAY_WIPE:
+        for (int y = ov->y; nav->hdmv[p] && y < ov->y + ov->h && y < nav->ph; y++)
+            for (int x = ov->x; x < ov->x + ov->w && x < nav->pw; x++)
+                nav->hdmv[p][(size_t)y * nav->pw + x] = 0;
+        break;
+    case BD_OVERLAY_DRAW:
+        if (nav->hdmv[p] && ov->img && ov->palette)
+            draw_rle(nav->hdmv[p], nav->pw, nav->ph, ov);
+        break;
+    case BD_OVERLAY_FLUSH:
+        if (nav->hdmv[p] && nav->front[p]) {
+            memcpy(nav->front[p], nav->hdmv[p], n * 4);
+            changed = true;
+        }
+        break;
+    }
+    plane_changed(nav, p, changed); /* unlocks */
 }
 
 /* ---------- navigation state (lock held) ---------- */
@@ -778,6 +886,7 @@ static void bdn_close(nav_impl_t *nav)
     for (int p = 0; p < PLANES; p++) {
         free(nav->argb.buf[p]);
         free(nav->front[p]);
+        free(nav->hdmv[p]);
     }
     pthread_cond_destroy(&nav->wake);
     pthread_mutex_destroy(&nav->olock);

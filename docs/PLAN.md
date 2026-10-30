@@ -455,14 +455,28 @@ Status (2026-10-30):
 - ✅ Masters of the Universe UHD (desktop, also the Flatpak build): intro,
   menu over its video, highlight, submenus, Play, the film in 4K with
   seek, chapters, pop-up menu, track picker with the disc's languages.
-- ⬜ Not yet: the box (needs a Blu-ray in its drive), Back to the Future,
-  resume through Blu-ray menus, Play all without reopening the disc (the
-  original reason for navigation mode), HDMV menus (Phase 4), the
-  background graphics plane, menu sound effects.
+- ✅ Back to the Future on the box (Flatpak, Game Mode): mounted by the
+  app, Universal intro, main menu, highlight, Chapters submenu. The disc's
+  BD-Live sockets are refused (its online ticker stays empty).
+- ⬜ Not yet: resume through Blu-ray menus, Play all without reopening the disc (the
+  original reason for navigation mode), the background graphics plane,
+  menu sound effects.
 
 ### Phase 4 — Blu-ray HDMV menus
 libbluray runs the HDMV VM and decodes the IG menus; pass its overlays to
-mpv, plus pop-up menus during playback. Needs an HDMV test disc.
+mpv, plus pop-up menus during playback. Test disc: *Legend* (Arrow,
+Director's Cut; 25 HDMV titles, no BD-J).
+
+Status (2026-10-30):
+- ✅ libdiscnav draws the IG plane from libbluray's YUV overlays (RLE
+  images with a BT.709 YCbCr palette) into a back buffer, shown on FLUSH,
+  through the same overlay as BD-J.
+- ✅ Legend (desktop): First Play, main menu over its video, highlight,
+  the Setup submenu, Play Film, seek, the pop-up menu over the film, B
+  closing it, View to the main menu. (The colour bars at the bottom of
+  its menus are in the disc's menu video.)
+- ⬜ B in a Blu-ray menu leaves the disc: Blu-ray has no "go up", a
+  submenu's own return button does it. The box; menu sound effects.
 
 ### Phase 5 — 3D (Blu-ray 3D and side-by-side files)
 **On hold** (2026-10-29) until the box moves to a room with a 3D TV: an LG
