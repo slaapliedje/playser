@@ -204,6 +204,11 @@ modules:
       # spdif muxer rejects is dropped instead of failing the decoder
       - type: patch
         path: patches/mpv-spdif-drop-bad-packets.patch
+      # overlay-colorspace=display: the UI overlay is composited as given,
+      # encoded by the app for the display (no tone mapping over HDR video
+      # on an SDR screen)
+      - type: patch
+        path: patches/mpv-overlay-display-colorspace.patch
 
   - name: playser
     buildsystem: cmake-ninja

@@ -4,9 +4,10 @@
 
 #include "Mpv.h"
 
-// mpv composites BGRA overlays in the *video's* colorspace (vo_gpu_next,
-// "Infer bitmap colorspace from source"), so over HDR video an sRGB UI must
-// be re-encoded first or its white lands at the display's peak
+// mpv composites the UI overlay in the display's colorspace (our patched
+// mpv, overlay-colorspace=display) or, stock, in the video's (vo_gpu_next,
+// "Infer bitmap colorspace from source"); either way an sRGB UI must be
+// re-encoded for an HDR one or its white lands at the display's peak
 // (docs/spike-results.md, 0d). This converts premultiplied sRGB to
 // premultiplied BT.2020 PQ/HLG, with SDR white at `whiteNits`.
 class OverlayEncoder

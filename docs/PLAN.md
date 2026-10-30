@@ -153,8 +153,20 @@ Status (2026-10-28), `app/`:
     `org.freedesktop.ScreenSaver`; the app inhibits it while playing
     (`ScreenSaverInhibitor`, verified against KDE; Steam accepts the call).
     A screensaver that is already showing stays above a newly launched game.
-  - ⬜ Known: on SDR displays, PQ overlays get mpv's black-point lift (dark
-    panels ~21→41); matters for HDR content on a Deck LCD.
+  - ✅ **SDR black lift** (2026-10-29): over HDR video on an SDR screen,
+    stock mpv took the UI overlay as PQ and tone-mapped it with the video
+    (panels 21→40, desaturated; `target-contrast=inf` only got 36). The
+    Flatpak's mpv carries `flatpak/patches/mpv-overlay-display-colorspace.patch`:
+    `overlay-colorspace=display` composites `overlay-add` bitmaps in the
+    display's colorspace, marked as peaking at SDR white (an exact match
+    with the video's colorspace would make libplacebo tone-map it
+    dynamically with the video: ~62-nit text on the box). `Mpv` then
+    encodes the UI for `video-target-params` instead of `video-params`,
+    and logs the display (`mpv: display bt.2020 pq 1000 nits`); stock mpv
+    rejects the option and keeps the old path. Verified with a synthetic
+    HDR10 clip: desktop SDR panel (21,27,39) exact; box HDR panel
+    1.9/2.2/4.0 nits, text 173-187, amber 149/101/22 (expected 1.9/2.2/3.9,
+    176-186, 149/103/21.5; the old path had amber red at 134).
 - ⬜ Real controller test (Steam Input on the box, Legion Go 2).
 - ✅ "Opening disc…" screen while mpv opens the title; B cancels (the UI
   returns at once; libbluray's open can't be interrupted and ends ~13 s

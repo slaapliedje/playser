@@ -1,0 +1,62 @@
+--- a/sub/osd.h
++++ b/sub/osd.h
+@@ -76,6 +76,7 @@
+     int change_id;  // Incremented on each change (0 is never used)
+ 
+     bool video_color_space; // True if the bitmap is in video color space
++    bool external_overlay;  // True if added with the overlay-add command
+ };
+ 
+ struct sub_bitmap_list {
+--- a/sub/osd.c
++++ b/sub/osd.c
+@@ -333,6 +333,7 @@
+     } else if (obj->type == OSDTYPE_EXTERNAL2) {
+         if (obj->external2 && obj->external2->format) {
+             res = sub_bitmaps_copy(NULL, obj->external2); // need to be owner
++            res->external_overlay = true;
+             obj->external2->change_id = 0;
+         }
+     } else {
+--- a/video/out/vo_gpu_next.c
++++ b/video/out/vo_gpu_next.c
+@@ -167,6 +167,7 @@
+     bool delayed_peak;
+     int sub_hdr_peak;
+     int image_subs_hdr_peak;
++    int overlay_colorspace;
+     int border_background;
+     float background_blur_radius;
+     float corner_rounding;
+@@ -195,6 +196,7 @@
+             M_RANGE(10, 10000)},
+         {"image-subs-hdr-peak", OPT_CHOICE(image_subs_hdr_peak, {"sdr", PL_COLOR_SDR_WHITE},
+             {"video", -1}),  M_RANGE(10, 10000)},
++        {"overlay-colorspace", OPT_CHOICE(overlay_colorspace, {"video", 0}, {"display", 1})},
+         {"allow-delayed-peak-detect", OPT_BOOL(delayed_peak)},
+         {"border-background", OPT_CHOICE(border_background,
+             {"none",  BACKGROUND_NONE},
+@@ -384,6 +386,23 @@
+         case SUBBITMAP_BGRA:
+             ol->mode = PL_OVERLAY_NORMAL;
+             ol->repr.alpha = PL_ALPHA_PREMULTIPLIED;
++            // overlay-add bitmaps drawn for the display: composited as they
++            // are, in the colorspace of the frame they're drawn on (the
++            // display, unless --blend-subtitles=video)
++            if (item->external_overlay && p->next_opts->overlay_colorspace == 1) {
++                ol->color = frame->color;
++                // Peaking at SDR white, as UI does; this also keeps it from
++                // matching the video's colorspace, which libplacebo would
++                // take as video and tone-map dynamically with it
++                if (pl_color_transfer_is_hdr(ol->color.transfer)) {
++                    ol->color.hdr = (struct pl_hdr_metadata) {
++                        .prim = frame->color.hdr.prim,
++                        .min_luma = frame->color.hdr.min_luma,
++                        .max_luma = PL_COLOR_SDR_WHITE,
++                    };
++                }
++                break;
++            }
+             // Infer bitmap colorspace from source
+             if (src) {
+                 ol->color = src->params.color;

@@ -34,7 +34,10 @@ class Mpv : public QObject
     Q_PROPERTY(QString passthrough READ passthrough WRITE setPassthrough NOTIFY passthroughChanged)
 
 public:
-    // Transfer function the video (and so every overlay) is encoded with.
+    // Transfer function overlays must be encoded with: the display's when
+    // mpv takes overlays in display colorspace (our patched mpv's
+    // overlay-colorspace=display), else the video's, which stock mpv
+    // assumes them to be in.
     enum class Transfer { Sdr, Pq, Hlg };
 
     // options: extra "name=value" mpv options (testing)
@@ -116,6 +119,8 @@ private:
     QVariantList m_tracks;
     QSize m_osdSize;
     Transfer m_transfer = Transfer::Sdr;
+    bool m_displayOverlays = false; // mpv takes overlays in display colorspace
+    QString m_display; // the display's colorspace, as last logged
     QHash<int, OverlaySlot> m_overlays;
     quint64 m_nextReply = 1000;
     qint64 m_currentEntry = -1; // playlist entry of the latest START_FILE

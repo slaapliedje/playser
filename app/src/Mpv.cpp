@@ -9,7 +9,7 @@ namespace {
 enum PropId : uint64_t {
     PropPause = 1, PropIdle, PropTimePos, PropDuration, PropTitle, PropChapter,
     PropChapterList, PropTrackList, PropOsdDimensions, PropVideoParams,
-    PropSeeking, PropPausedForCache, PropAudioId, PropSpdif,
+    PropSeeking, PropPausedForCache, PropAudioId, PropSpdif, PropTargetParams,
 };
 
 // passthrough found the audio output in use: retry after this long, by when
@@ -156,6 +156,12 @@ Mpv::Mpv(bool fullscreen, const QStringList &options, QObject *parent) : QObject
     mpv_set_option_string(m_mpv, "audio-channels", "auto-safe");
     // no audio device at all: play silently instead of failing the file
     mpv_set_option_string(m_mpv, "audio-fallback-to-null", "yes");
+    // Our mpv (flatpak/patches) composites overlay-add bitmaps as given, in
+    // the display's colorspace, so the UI is encoded for the display: stock
+    // mpv converts them from the video's, which over HDR video on an SDR
+    // screen tone-maps the UI and lifts its dark panels. (Before the test
+    // options, which may set it back to "video".)
+    mpv_set_option_string(m_mpv, "overlay-colorspace", "display");
     for (const QString &option : options) {
         const int eq = option.indexOf('=');
         if (eq <= 0 || mpv_set_option_string(m_mpv, option.left(eq).toUtf8().constData(),
@@ -164,6 +170,10 @@ Mpv::Mpv(bool fullscreen, const QStringList &options, QObject *parent) : QObject
     }
     if (mpv_initialize(m_mpv) < 0)
         qFatal("mpv_initialize failed");
+    if (char *oc = mpv_get_property_string(m_mpv, "overlay-colorspace")) {
+        m_displayOverlays = qstrcmp(oc, "display") == 0;
+        mpv_free(oc);
+    }
     // "no target node available": the audio output is busy (onAudioOutputBusy)
     mpv_request_log_messages(m_mpv, "warn");
 
@@ -181,6 +191,7 @@ Mpv::Mpv(bool fullscreen, const QStringList &options, QObject *parent) : QObject
     mpv_observe_property(m_mpv, PropTrackList, "track-list", MPV_FORMAT_NODE);
     mpv_observe_property(m_mpv, PropOsdDimensions, "osd-dimensions", MPV_FORMAT_NODE);
     mpv_observe_property(m_mpv, PropVideoParams, "video-params", MPV_FORMAT_NODE);
+    mpv_observe_property(m_mpv, PropTargetParams, "video-target-params", MPV_FORMAT_NODE);
     mpv_observe_property(m_mpv, PropSeeking, "seeking", MPV_FORMAT_FLAG);
     mpv_observe_property(m_mpv, PropPausedForCache, "paused-for-cache", MPV_FORMAT_FLAG);
     mpv_observe_property(m_mpv, PropAudioId, "current-tracks/audio/id", MPV_FORMAT_INT64);
@@ -388,9 +399,20 @@ void Mpv::processEvents()
             case PropPausedForCache: m_pausedForCache = has && *static_cast<int *>(p->data); break;
             case PropAudioId: m_hasAudio = has; break;
             case PropSpdif: m_spdif = has ? QString::fromUtf8(*static_cast<char **>(p->data)) : QString(); break;
-            case PropVideoParams: {
-                const Transfer t = transferOf(has ? nodeToVariant(static_cast<mpv_node *>(p->data)).toMap()
-                                                  : QVariantMap());
+            case PropVideoParams:
+            case PropTargetParams: {
+                const QVariantMap params = has ? nodeToVariant(static_cast<mpv_node *>(p->data)).toMap() : QVariantMap();
+                if (ev->reply_userdata == PropTargetParams && !params.isEmpty()) {
+                    const QString display = QStringList{ params.value("primaries").toString(), params.value("gamma").toString(),
+                                                         params.value("max-luma").toString() + " nits" }.join(' ');
+                    if (display != m_display) {
+                        m_display = display;
+                        qInfo("mpv: display %s", qPrintable(display));
+                    }
+                }
+                if ((ev->reply_userdata == PropTargetParams) != m_displayOverlays)
+                    break;
+                const Transfer t = transferOf(params);
                 if (t != m_transfer) {
                     m_transfer = t;
                     emit transferChanged();
