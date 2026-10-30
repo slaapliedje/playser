@@ -437,6 +437,29 @@ Status (2026-10-30):
 - Risk: libbluray's BD-J works on many discs, not all; keep a list of
   tested discs.
 
+Status (2026-10-30):
+- ✅ Spike 0e: libbluray's BD-J runs under Java 21 (not 24+: no
+  SecurityManager; not a headless JRE: libbluray forces AWT on).
+- ✅ Flatpak: the openjdk21 SDK extension builds libbluray's BD-J jar
+  (Ant included) and a jlink'd JRE goes to `/app/jre` (53 MB; java.rmi is
+  needed), `JAVA_HOME=/app/jre`.
+- ✅ libdiscnav: a backend per format (`dvd.c`, `bluray.c` behind
+  `internal.h`); Blu-ray navigation mode with M2TS segments, BD-J ARGB
+  planes as the menu overlay (1920x1080), PIDs and languages from the
+  playlist, seek, chapters, pop-up menu, top menu.
+- ✅ App: opens in the background, Blu-ray menus read through the disc's
+  mount (from the device, BD-J's file cache misses files a disc wants),
+  "Disc menus" setting covers Blu-ray, falls back to playing the film if
+  the menus don't start. Start = pop-up menu, View = top menu, B closes a
+  pop-up.
+- ✅ Masters of the Universe UHD (desktop, also the Flatpak build): intro,
+  menu over its video, highlight, submenus, Play, the film in 4K with
+  seek, chapters, pop-up menu, track picker with the disc's languages.
+- ⬜ Not yet: the box (needs a Blu-ray in its drive), Back to the Future,
+  resume through Blu-ray menus, Play all without reopening the disc (the
+  original reason for navigation mode), HDMV menus (Phase 4), the
+  background graphics plane, menu sound effects.
+
 ### Phase 4 — Blu-ray HDMV menus
 libbluray runs the HDMV VM and decodes the IG menus; pass its overlays to
 mpv, plus pop-up menus during playback. Needs an HDMV test disc.
