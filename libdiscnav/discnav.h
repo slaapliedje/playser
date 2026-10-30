@@ -34,8 +34,9 @@ typedef enum {
     /* a user action jumped elsewhere: open the next segment now instead of
      * letting the player's buffered data play out */
     DISCNAV_EVENT_FLUSH,
-    /* the VM chose other streams, or moved between menu and title:
-     * call discnav_get_tracks */
+    /* the VM chose other streams, moved between menu and title, or the
+     * subpicture palette changed: call discnav_get_tracks and
+     * discnav_get_palette */
     DISCNAV_EVENT_TRACKS,
     /* playback reached the end of the disc's programming */
     DISCNAV_EVENT_STOP,
@@ -99,6 +100,10 @@ typedef struct {
 } discnav_tracks_t;
 
 void discnav_get_tracks(discnav_t *nav, discnav_tracks_t *tracks);
+
+/* The current subpicture palette as 0xRRGGBB, for a player that decodes
+ * title subtitles itself. False before the disc has set one. */
+bool discnav_get_palette(discnav_t *nav, uint32_t rgb[16]);
 
 /* Composites the menu graphics into a frame-sized buffer (fw x fh, the
  * video's storage size, e.g. 720x480; bytes R,G,B,A, straight alpha).

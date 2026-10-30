@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <deque>
 #include <mpv/client.h>
 
 namespace {
@@ -53,10 +54,13 @@ QVariant nodeToVariant(const mpv_node *n)
 
 // Builds an mpv_node tree for async commands/property sets. Strings are kept
 // alive in `store` for the duration of the call (mpv copies them).
+// Builds an mpv_node tree from a QVariant; the builder owns the memory.
+// Deques: nodes point into them, and they never move what they hold.
 struct NodeBuilder {
-    QList<QByteArray> store;
-    QList<QList<mpv_node>> lists;
-    QList<mpv_node_list> nodeLists;
+    std::deque<QByteArray> store;
+    std::deque<std::vector<mpv_node>> lists;
+    std::deque<std::vector<char *>> keyLists;
+    std::deque<mpv_node_list> nodeLists;
 
     mpv_node build(const QVariant &v)
     {
@@ -86,26 +90,34 @@ struct NodeBuilder {
         }
         case QMetaType::QVariantList: {
             const QVariantList src = v.toList();
-            lists.append(QList<mpv_node>());
-            QList<mpv_node> &values = lists.last();
-            values.reserve(src.size());
+            std::vector<mpv_node> &values = lists.emplace_back();
             for (const QVariant &e : src)
-                values.append(build(e));
-            nodeLists.append(mpv_node_list{ int(values.size()), values.data(), nullptr });
+                values.push_back(build(e));
+            nodeLists.push_back(mpv_node_list{ int(values.size()), values.data(), nullptr });
             n.format = MPV_FORMAT_NODE_ARRAY;
-            n.u.list = &nodeLists.last();
+            n.u.list = &nodeLists.back();
+            break;
+        }
+        case QMetaType::QVariantMap: {
+            const QVariantMap src = v.toMap();
+            std::vector<mpv_node> &values = lists.emplace_back();
+            std::vector<char *> &keys = keyLists.emplace_back();
+            for (auto it = src.cbegin(); it != src.cend(); ++it) {
+                keys.push_back(store.emplace_back(it.key().toUtf8()).data());
+                values.push_back(build(it.value()));
+            }
+            nodeLists.push_back(mpv_node_list{ int(values.size()), values.data(), keys.data() });
+            n.format = MPV_FORMAT_NODE_MAP;
+            n.u.list = &nodeLists.back();
             break;
         }
         default:
-            store.append(v.toString().toUtf8());
             n.format = MPV_FORMAT_STRING;
-            n.u.string = store.last().data();
+            n.u.string = store.emplace_back(v.toString().toUtf8()).data();
             break;
         }
         return n;
     }
-
-    NodeBuilder() { lists.reserve(64); nodeLists.reserve(64); store.reserve(64); }
 };
 
 void onMpvWakeup(void *ctx)

@@ -198,6 +198,7 @@ bool DiscNav::open(const QString &device)
     m_errors = 0;
     m_aid = m_sid = -2;
     m_forcedOnly = -1;
+    m_palette.clear();
     m_mpv->setStallCheck(false);
     emit activeChanged();
     load();
@@ -221,6 +222,7 @@ void DiscNav::close()
         m_mpv->stop(); // cancels and closes the stream; the context goes with it
         m_mpv->setOverlay(kMenuOverlay, QImage());
         m_mpv->setStallCheck(true);
+        m_mpv->setMpvProperty("sub-lavc-o", QVariantMap());
     }
     m_overlayShown = false;
     freeIfDone(ctx);
@@ -346,6 +348,19 @@ void DiscNav::applyTracks()
     if (int(t.sub_forced_only) != m_forcedOnly) {
         m_mpv->setMpvProperty("sub-forced-events-only", t.sub_forced_only);
         m_forcedOnly = t.sub_forced_only;
+    }
+    // title subtitles are decoded by mpv, which has no way to learn the
+    // disc's palette through a stream: give it to FFmpeg's decoder
+    uint32_t rgb[16];
+    if (discnav_get_palette(m_ctx->nav, rgb)) {
+        QStringList colours;
+        for (uint32_t c : rgb)
+            colours.append(QStringLiteral("%1").arg(c, 6, 16, QLatin1Char('0')));
+        const QString palette = colours.join(',');
+        if (palette != m_palette) {
+            m_mpv->setMpvProperty("sub-lavc-o", QVariantMap{ { "palette", palette } });
+            m_palette = palette;
+        }
     }
 }
 

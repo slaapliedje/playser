@@ -394,6 +394,13 @@ Status (2026-10-30):
   still menu, highlight moves, motion menu with audio, title, chapter
   skip, menu call from a title, title end back to the menu, B at the top
   menu home. Not yet on a commercial DVD (needs one in a drive).
+- ✅ Title subtitles (2026-10-30): mpv decodes them, but through a stream
+  it never learns the disc's palette (FFmpeg drew them black and white);
+  `DiscNav` passes `discnav_get_palette()` as `sub-lavc-o` `palette`. And
+  a subtitle stream only appears with its first packet, which mpv drops
+  before the track is selected, so each title segment now starts with an
+  empty subpicture announcing the VM's stream. Verified with a forced
+  orange/cyan subtitle in the fixture's Title 2 (`tools/make-test-dvd.sh`).
 
 ### Phase 3 — Blu-ray navigation and BD-J menus (UHD too)
 - Blu-ray navigation mode: libbluray's `bd_play()` + `bd_read_ext()`

@@ -72,6 +72,7 @@ private:
     int m_errors = 0;
     qint64 m_aid = -2, m_sid = -2; // last selected (-2: none yet, -1: off)
     int m_forcedOnly = -1;
+    QString m_palette; // as last given to mpv's subtitle decoder
     bool m_overlayPending = false;
     bool m_overlayShown = false;
     OverlayEncoder m_encoder;

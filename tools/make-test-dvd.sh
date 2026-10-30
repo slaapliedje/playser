@@ -6,7 +6,8 @@
 #   VTS menu    6 s looping motion menu WITH audio, 2 buttons:
 #                 [Back] [Play Title 1]
 #   Title 1     20 s, chapters every 5 s, timecode burned in -> back to VMGM menu
-#   Title 2     10 s colour bars                              -> back to VMGM menu
+#   Title 2     10 s colour bars, forced subtitle 1-8 s (orange box,
+#               cyan inside: checks the disc's palette)       -> back to VMGM menu
 #
 # Usage: tools/make-test-dvd.sh [outdir]   (default: build/fixtures/discnav-test)
 # Produces <outdir>/DISC/VIDEO_TS and <outdir>/discnav-test.iso
@@ -97,6 +98,16 @@ ff -f lavfi -i "testsrc2=s=720x480:r=30000/1001" -f lavfi -i "sine=f=440:sample_
 ff -f lavfi -i "smptebars=s=720x480:r=30000/1001" -f lavfi -i "sine=f=880:sample_rate=48000" -t 10 \
     -vf "$(txt 'TITLE 2' 40 40 48),$(txt '%{pts\:hms}' 40 400 40)" \
     -target ntsc-dvd -aspect 4:3 "$work/title2.mpg"
+# forced subtitle: drawn on opaque black, black keyed out (see overlay())
+ff -f lavfi -i "color=c=black:s=720x480" \
+    -vf "drawbox=x=260:y=200:w=200:h=80:color=0xff8000:t=fill,drawbox=x=300:y=220:w=120:h=40:color=0x00ffff:t=fill,format=rgba,colorkey=black:0.01:0" \
+    -frames:v 1 "$work/title2_sub.png"
+cat >"$work/title2_sub.xml" <<EOF
+<subpictures format="NTSC"><stream>
+<spu start="00:00:01.00" end="00:00:08.00" force="yes" image="$work/title2_sub.png"/>
+</stream></subpictures>
+EOF
+spumux -s0 "$work/title2_sub.xml" <"$work/title2.mpg" >"$work/title2_subs.mpg" 2>"$work/spumux-title2.log"
 
 echo ">> dvdauthor"
 cat >"$work/dvd.xml" <<EOF
@@ -130,7 +141,7 @@ cat >"$work/dvd.xml" <<EOF
         <post>call vmgm menu 1;</post>
       </pgc>
       <pgc>
-        <vob file="$work/title2.mpg"/>
+        <vob file="$work/title2_subs.mpg"/>
         <post>call vmgm menu 1;</post>
       </pgc>
     </titles>

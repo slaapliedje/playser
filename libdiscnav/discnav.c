@@ -16,6 +16,10 @@
  *   then padding, then the read blocks until the still ends.
  * - Track selection follows the VM: stream changes give physical stream
  *   numbers, which map to MPEG-PS stream ids.
+ * - MPEG-PS streams only appear with their first packet, and a player
+ *   drops packets of streams it hasn't selected yet: each title segment
+ *   starts with an empty subpicture for the VM's subtitle stream, so the
+ *   player can select it before real ones arrive.
  */
 #define _GNU_SOURCE
 #include "discnav.h"
@@ -65,6 +69,7 @@ struct discnav {
     spu_image_t spu;
     spu_highlight_t hl;
     uint32_t rgb_clut[16];
+    bool have_clut;
     int cur_button;
 };
 
@@ -73,6 +78,9 @@ struct discnav_stream {
     uint8_t blk[BLOCK];
     int blk_pos, blk_len;
     bool cancel, eof, got_data;
+    bool primed;            /* the subtitle stream was announced (see top) */
+    uint8_t held[BLOCK];    /* a disc block held back behind the announcement */
+    bool have_held;
     bool in_still;
     int still_len;          /* seconds; 0xff = infinite */
     uint64_t still_start;
@@ -213,6 +221,20 @@ static void make_padding_block(discnav_t *nav, uint8_t *b)
     put_padding(b, 14);
 }
 
+/* Private stream 1 PES carrying an empty subpicture (stop display, no
+ * pixels) on stream `id`: makes the stream known without showing anything. */
+static void make_spu_announce_block(discnav_t *nav, uint8_t *b, int id)
+{
+    static const uint8_t spu[] = { 0, 10, 0, 4,          /* size, control offset */
+                                   0, 0, 0, 4, 0x02, 0xff }; /* delay 0, next = self, STP_DSP, end */
+    uint8_t pes[9 + 1 + sizeof(spu)] = { 0, 0, 1, 0xbd, 0, 3 + 1 + sizeof(spu), 0x81, 0, 0 };
+    pes[9] = (uint8_t)id;
+    memcpy(pes + 10, spu, sizeof(spu));
+    put_pack_header(nav, b);
+    memcpy(b + 14, pes, sizeof(pes));
+    put_padding(b, 14 + sizeof(pes));
+}
+
 /* A video PES with a lone sequence_end_code: makes the decoder emit the
  * picture it holds back, so a still menu actually appears. */
 static void make_seq_end_block(discnav_t *nav, uint8_t *b)
@@ -252,6 +274,12 @@ static int next_block(discnav_stream_t *s)
         if (nav->nav_pending) {
             nav->nav_pending = false;
             memcpy(s->blk, nav->last_nav, BLOCK);
+            ret = 1;
+            break;
+        }
+        if (s->have_held) {
+            s->have_held = false;
+            memcpy(s->blk, s->held, BLOCK);
             ret = 1;
             break;
         }
@@ -305,6 +333,12 @@ static int next_block(discnav_stream_t *s)
             s->got_data = true;
             if (nav->in_menu)
                 scan_spu(nav, s->blk);
+            if (!s->primed && !nav->in_menu && nav->want_sid >= 0) {
+                memcpy(s->held, s->blk, BLOCK);
+                s->have_held = true;
+                make_spu_announce_block(nav, s->blk, nav->want_sid);
+            }
+            s->primed = true;
             ret = 1;
             goto out;
         case DVDNAV_NOP:
@@ -379,8 +413,10 @@ static int next_block(discnav_stream_t *s)
             pthread_mutex_lock(&nav->olock);
             for (int i = 0; i < 16; i++)
                 nav->rgb_clut[i] = spu_clut_to_rgb(clut[i]);
+            nav->have_clut = true;
             pthread_mutex_unlock(&nav->olock);
             emit(nav, DISCNAV_EVENT_OVERLAY);
+            emit(nav, DISCNAV_EVENT_TRACKS);
             continue;
         }
         case DVDNAV_AUDIO_STREAM_CHANGE: {
@@ -523,6 +559,16 @@ void discnav_get_tracks(discnav_t *nav, discnav_tracks_t *t)
     t->sub_forced_only = nav->sub_forced_only;
     t->in_menu = nav->in_menu;
     pthread_mutex_unlock(&nav->lock);
+}
+
+bool discnav_get_palette(discnav_t *nav, uint32_t rgb[16])
+{
+    pthread_mutex_lock(&nav->olock);
+    bool have = nav->have_clut;
+    for (int i = 0; i < 16; i++)
+        rgb[i] = nav->rgb_clut[i] & 0xffffff;
+    pthread_mutex_unlock(&nav->olock);
+    return have;
 }
 
 bool discnav_render_overlay(discnav_t *nav, uint8_t *rgba, int fw, int fh)
