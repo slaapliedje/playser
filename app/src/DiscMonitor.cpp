@@ -189,15 +189,15 @@ void DiscMonitor::refresh()
                 d["disc"] = id.disc;
                 d["contentHash"] = id.contentHash;
             }
-            const QString main = id.disc.value("main").toString();
+            // the catalogue's main feature, else mpv's choice (Blu-ray: the
+            // first title; DVD: the longest)
+            const QString main = id.disc.value("mainUrl").toString();
 
             if (kind == "bluray") {
-                // "01199.mpls" -> bd://mpls/1199
-                d["url"] = main.endsWith(".mpls") ? QStringLiteral("bd://mpls/%1").arg(main.chopped(5).toInt())
-                                                  : QStringLiteral("bd://");
+                d["url"] = main.startsWith("bd://") ? main : QStringLiteral("bd://");
                 d["options"] = QVariantMap{ { "bluray-device", device } };
             } else if (kind == "dvd") {
-                d["url"] = "dvd://";
+                d["url"] = main.startsWith("dvd://") ? main : QStringLiteral("dvd://");
                 d["options"] = QVariantMap{ { "dvd-device", device } };
             }
             drives.append(d);
@@ -251,7 +251,7 @@ void DiscMonitor::identify(const QString &blockPath, const QString &mountPoint)
         QVariantMap disc = hash.isEmpty() ? QVariantMap() : DiscIndex::lookup(hash);
         const bool known = !disc.isEmpty();
         if (known)
-            DiscIndex::resolvePlaylists(disc, DiscIndex::playlists(mountPoint));
+            DiscIndex::resolveTitles(disc, mountPoint);
         // not in the catalogue: the title the disc gives itself (Blu-ray);
         // its art either way
         const QVariantMap meta = DiscIndex::discMeta(mountPoint);
@@ -274,7 +274,9 @@ void DiscMonitor::identify(const QString &blockPath, const QString &mountPoint)
             const QString what = known ? title
                 : title.isEmpty() ? QStringLiteral("(not in index)")
                                   : QStringLiteral("(not in index; disc says \"%1\")").arg(title);
-            qInfo("disc %s: %s %s", qPrintable(mountPoint), qPrintable(hash), qPrintable(what));
+            const QString main = disc.value("mainUrl").toString();
+            qInfo("disc %s: %s %s%s", qPrintable(mountPoint), qPrintable(hash), qPrintable(what),
+                  main.isEmpty() ? "" : qPrintable(", main feature " + main));
             self->refresh();
         });
     });

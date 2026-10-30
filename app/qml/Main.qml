@@ -93,7 +93,7 @@ FocusScope {
             const episodes = d.disc && d.disc.episodes ? d.disc.episodes : []
             visible = false
             player.play(d, episodes.length > 1
-                ? episodes.map(e => ({ url: "bd://mpls/" + parseInt(e.playlist), title: e.title }))
+                ? episodes.map(e => ({ url: e.url, title: e.title }))
                 : null, index, start)
         }
         onClosed: home.forceActiveFocus()

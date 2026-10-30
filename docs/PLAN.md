@@ -168,8 +168,14 @@ Status (2026-10-28), `app/`:
   discs. Unknown discs (2026-10-29): the title comes from the Blu-ray's
   `BDMV/META/DL/bdmt_*.xml` (`di:name`), else the volume label tidied
   (`BACK_TO_FUTURE_1` → "Back To Future 1"), and the largest thumbnail
-  there is the drive card's art (verified: *Back to the Future*). Still to do: DVD main title (records name VTS numbers, match by
-  duration), an Extras screen, and a
+  there is the drive card's art (verified: *Back to the Future*). DVDs (2026-10-29): records name a title set (VTS), which can hold
+  several titles; `DiscIndex::dvdTitles` reads the unencrypted IFOs
+  (VMG `TT_SRPT`, each VTS's `PTT_SRPT` and PGC playback times) and the
+  item gets the title in that set whose length matches (within 5 s or 2%,
+  each title used once). mpv counts DVD titles from 0 (`dvd://1` is the
+  disc's title 2). Verified on a synthetic 3-title, 2-VTS DVD
+  (`build/fixtures/dvd-titles`); not yet on a real catalogued DVD. Still
+  to do: an Extras screen, and a
   libudfread reader so discs needn't be mounted. Original notes: (https://thediscdb.com, data repo
   `TheDiscDb/data`, MIT; ~6,150 discs as of 2026-10-29). Each disc record
   has a `ContentHash` and labels playlists `MainMovie` / `Extra` /

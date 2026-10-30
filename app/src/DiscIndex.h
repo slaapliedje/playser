@@ -20,14 +20,21 @@ QString contentHash(const QString &discRoot);
 // sorted by name. Reads the disc: call it off the GUI thread.
 QVariantList playlists(const QString &discRoot);
 
-// Fills in item.playlist for catalogue items that name a clip ("00011.m2ts")
-// with the disc's one-clip playlist for it, since mpv selects playlists, and
-// adds `episodes`: the Episode items in playlist (disc) order.
-void resolvePlaylists(QVariantMap &disc, const QVariantList &playlists);
+// DVD titles of a mounted disc, from the unencrypted IFO files:
+// [{ number (1-based, as the disc counts them), vts, seconds }]. Reads the
+// disc: call it off the GUI thread.
+QVariantList dvdTitles(const QString &discRoot);
+
+// Gives catalogue items the mpv URL that plays them (item.url) and adds
+// `mainUrl` (the first MainMovie's) and `episodes`: the Episode items in
+// disc order. Blu-ray items name a playlist, or a clip ("00011.m2ts") that
+// is played through its one-clip playlist. DVD items name a title set
+// (VTS), which can hold several titles: the title is the one in that set
+// whose length matches. Reads the disc: call it off the GUI thread.
+void resolveTitles(QVariantMap &disc, const QString &discRoot);
 
 // The catalogue entry for a hash, or an empty map:
 // { title, year, kind, release, format,
-//   main: "01199.mpls" (first MainMovie, if any),
 //   items: [{ source, seconds, type, title, season, episode }] }
 // Thread-safe; the index is loaded on first use.
 QVariantMap lookup(const QString &contentHash);
