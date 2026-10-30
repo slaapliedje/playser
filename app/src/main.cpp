@@ -104,8 +104,8 @@ int main(int argc, char *argv[])
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
 
     QGuiApplication app(argc, argv);
-    app.setApplicationName("discplayer");
-    app.setOrganizationName("discplayer"); // settings: ~/.config/discplayer/
+    app.setApplicationName("playser");
+    app.setOrganizationName("playser"); // settings: ~/.config/playser/
     // the same type everywhere: SteamOS's runtime only has DejaVu Sans, and
     // desktop hosts vary (data/fonts, SIL OFL)
     const int font = QFontDatabase::addApplicationFont(":/fonts/InterVariable.ttf");
@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
             ui.deliverKey(key);
     });
 
-    QQmlComponent component(&engine, "DiscPlayer", "Main");
+    QQmlComponent component(&engine, "Playser", "Main");
     QObject *root = component.createWithInitialProperties({
         { "mpv", QVariant::fromValue(&mpv) }, { "gamepad", QVariant::fromValue(&gamepad) } });
     auto *rootItem = qobject_cast<QQuickItem *>(root);

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3840" height="1240" viewBox="0 0 3840 1240"><defs><radialGradient id="bg" cx="0.755" cy="0.516" r="0.800"><stop offset="0" stop-color="#18223a"/><stop offset="1" stop-color="#0b0f17"/></radialGradient><radialGradient id="warm" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#f5b942" stop-opacity="0.18"/><stop offset="1" stop-color="#f5b942" stop-opacity="0"/></radialGradient>
+  <clipPath id="dclip"><circle cx="0" cy="0" r="520"/></clipPath>
+  <radialGradient id="dbody" cx="0.42" cy="0.38" r="0.75">
+    <stop offset="0" stop-color="#5a6378"/><stop offset="0.6" stop-color="#2a3142"/>
+    <stop offset="1" stop-color="#1a1f2c"/>
+  </radialGradient>
+  <linearGradient id="drim" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#e9eef8"/><stop offset="0.5" stop-color="#6c7690"/>
+    <stop offset="1" stop-color="#cfd6e4"/>
+  </linearGradient>
+  <linearGradient id="dtri" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#ffd27a"/><stop offset="1" stop-color="#f5b942"/>
+  </linearGradient>
+  <radialGradient id="dspot">
+    <stop offset="0" stop-color="#ffffff"/><stop offset="0.25" stop-color="#ffd27a"/>
+    <stop offset="0.6" stop-color="#ff5a3c" stop-opacity="0.55"/>
+    <stop offset="1" stop-color="#ff5a3c" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="dglow" x="-50%" y="-50%" width="200%" height="200%">
+    <feGaussianBlur stdDeviation="3"/>
+  </filter>
+  <filter id="dsheen" x="-10%" y="-10%" width="120%" height="120%">
+    <feGaussianBlur stdDeviation="62.4"/>
+  </filter>
+  <filter id="dsoft" x="-50%" y="-50%" width="200%" height="200%">
+    <feGaussianBlur stdDeviation="14"/>
+  </filter></defs><rect width="3840" height="1240" fill="url(#bg)"/><circle cx="2900" cy="640" r="832" fill="url(#warm)"/><g>
+<circle cx="2900" cy="660.8" r="520" fill="#000" opacity="0.45" filter="url(#dsoft)"/>
+<circle cx="2900" cy="640" r="520" fill="url(#dbody)"/>
+<g clip-path="url(#dclip)" transform="translate(2900,640)"><g opacity="0.30" filter="url(#dsheen)" transform="translate(-2900,-640)">
+<path d="M2900,640 L2449.7,380.0 A520,520 0 0 1 2579.9,230.2 Z" fill="#ff4d6d"/>
+<path d="M2900,640 L2640.0,189.7 A520,520 0 0 1 2827.6,125.1 Z" fill="#ffb347"/>
+<path d="M2900,640 L2900.0,120.0 A520,520 0 0 1 3094.8,157.9 Z" fill="#f9f871"/>
+<path d="M2900,640 L3160.0,189.7 A520,520 0 0 1 3309.8,319.9 Z" fill="#4dffb8"/>
+<path d="M2900,640 L3350.3,380.0 A520,520 0 0 1 3414.9,567.6 Z" fill="#4dc3ff"/>
+<path d="M2900,640 L3420.0,640.0 A520,520 0 0 1 3382.1,834.8 Z" fill="#a77bff"/>
+<path d="M2900,640 L3350.3,900.0 A520,520 0 0 1 3220.1,1049.8 Z" fill="#ff4d6d"/>
+<path d="M2900,640 L3160.0,1090.3 A520,520 0 0 1 2972.4,1154.9 Z" fill="#ffb347"/>
+<path d="M2900,640 L2900.0,1160.0 A520,520 0 0 1 2705.2,1122.1 Z" fill="#f9f871"/>
+<path d="M2900,640 L2640.0,1090.3 A520,520 0 0 1 2490.2,960.1 Z" fill="#4dffb8"/>
+<path d="M2900,640 L2449.7,900.0 A520,520 0 0 1 2385.1,712.4 Z" fill="#4dc3ff"/>
+<path d="M2900,640 L2380.0,640.0 A520,520 0 0 1 2417.9,445.2 Z" fill="#a77bff"/>
+</g></g>
+<circle cx="2900" cy="640" r="260.0" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="2.08"/><circle cx="2900" cy="640" r="301.6" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="2.08"/><circle cx="2900" cy="640" r="343.2" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="2.08"/><circle cx="2900" cy="640" r="384.8" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="2.08"/><circle cx="2900" cy="640" r="426.4" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="2.08"/><circle cx="2900" cy="640" r="468.0" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="2.08"/>
+<circle cx="2900" cy="640" r="513.8" fill="none" stroke="url(#drim)" stroke-width="13.0"/>
+<circle cx="2900" cy="640" r="210.6" fill="#0d121c" opacity="0.55"/>
+<circle cx="2900" cy="640" r="156.0" fill="#0b0f17"/>
+<circle cx="2900" cy="640" r="156.0" fill="none" stroke="#8a93a8" stroke-opacity="0.5" stroke-width="6.2"/>
+<path d="M2831.4,515.2 L3031.0,640.0 L2831.4,764.8 Z" fill="url(#dtri)" stroke="url(#dtri)" stroke-width="31.2" stroke-linejoin="round"/>
+<line x1="2250.0" y1="1264.0" x2="2637.1" y2="860.6" stroke="#ff5a3c" stroke-width="54.6" stroke-linecap="round" opacity="0.5" filter="url(#dglow)"/>
+<line x1="2250.0" y1="1264.0" x2="2637.1" y2="860.6" stroke="#ffd9c9" stroke-width="18.2" stroke-linecap="round"/>
+<circle cx="2637.1" cy="860.6" r="83.2" fill="url(#dspot)"/>
+</g></svg>

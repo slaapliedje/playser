@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Playser
+GenericName=Disc Player
+Comment=Play DVDs, Blu-rays and 4K UHD discs from the couch
+Icon=io.github.slaapliedje.Playser
+Exec=playser
+Terminal=false
+Categories=AudioVideo;Video;Player;
+Keywords=dvd;bluray;blu-ray;uhd;disc;movie;

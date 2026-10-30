@@ -1,5 +1,5 @@
 import QtQuick
-import DiscPlayer
+import Playser
 
 FocusScope {
     id: root
@@ -20,10 +20,13 @@ FocusScope {
     Text {
         id: heading
         anchors { left: parent.left; top: parent.top; margins: Theme.margin }
-        text: "Disc Player"
+        // the wordmark: "Play" + "ser" in the accent, as on the icon art
+        text: "Play<font color=\"" + Theme.accent + "\">ser</font>"
+        textFormat: Text.StyledText
         color: Theme.text
         font.pixelSize: Theme.fontHuge
-        font.weight: Font.DemiBold
+        font.weight: Font.ExtraBold
+        font.letterSpacing: -Theme.fontHuge * 0.02
     }
 
     ListView {

@@ -1,6 +1,6 @@
 import QtQuick
 import QtCore
-import DiscPlayer
+import Playser
 
 // Root of the UI. It is rendered off-screen and composited by mpv over the
 // video (UiRenderer), so transparent areas show the video underneath.

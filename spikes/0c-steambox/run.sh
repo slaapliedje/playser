@@ -26,8 +26,8 @@ hdr-overlay-pq) # same, bitmap pre-encoded as BT.2020 PQ (mpv blends in the vide
 app-hdr)        # the app itself (Flatpak) playing the HDR clip; extra args
                 # (e.g. --script ...) from ~/discnav-test/app-args
     flatpak run --filesystem="$dir" \
-        --env=DISCPLAYER_MPV_LOG="$stamp.log" --env=QT_FORCE_STDERR_LOGGING=1 \
-        io.github.slaapliedje.DiscPlayer --fullscreen --play "$dir/motu-uhd-60s.mkv" \
+        --env=PLAYSER_MPV_LOG="$stamp.log" --env=QT_FORCE_STDERR_LOGGING=1 \
+        io.github.slaapliedje.Playser --fullscreen --play "$dir/motu-uhd-60s.mkv" \
         $(cat "$dir/app-args" 2>/dev/null) >"$stamp.out" 2>&1
     echo "exit $?" >>"$stamp.out"
     exit ;;
@@ -38,8 +38,8 @@ app)            # the app (Flatpak) at its home screen, for disc tests
     [ -d "$mk" ] && set -- --share=network --filesystem="$mk":ro --filesystem=~/.MakeMKV:create \
         --env=LD_LIBRARY_PATH=/app/lib:"$mk/lib" --env=MAKEMKVCON="$mk/bin/makemkvcon" \
         --env=LIBAACS_PATH="$mk/lib/libmmbd" --env=LIBBDPLUS_PATH="$mk/lib/libmmbd"
-    flatpak run "$@" $(cat "$dir/flatpak-args" 2>/dev/null) --filesystem="$dir/logs" --env=DISCPLAYER_MPV_LOG="$stamp.log" --env=QT_FORCE_STDERR_LOGGING=1 \
-        io.github.slaapliedje.DiscPlayer --fullscreen $(cat "$dir/app-args" 2>/dev/null) >"$stamp.out" 2>&1
+    flatpak run "$@" $(cat "$dir/flatpak-args" 2>/dev/null) --filesystem="$dir/logs" --env=PLAYSER_MPV_LOG="$stamp.log" --env=QT_FORCE_STDERR_LOGGING=1 \
+        io.github.slaapliedje.Playser --fullscreen $(cat "$dir/app-args" 2>/dev/null) >"$stamp.out" 2>&1
     echo "exit $?" >>"$stamp.out"
     exit ;;
 pass-pipewire)  # bitstream TrueHD/E-AC-3/AC-3 through PipeWire

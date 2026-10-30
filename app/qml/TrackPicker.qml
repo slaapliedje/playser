@@ -1,5 +1,5 @@
 import QtQuick
-import DiscPlayer
+import Playser
 
 // Audio and subtitle selection panel. Left/right switches column, up/down
 // moves, A selects, B closes.

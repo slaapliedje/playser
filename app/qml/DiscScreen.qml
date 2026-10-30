@@ -1,5 +1,5 @@
 import QtQuick
-import DiscPlayer
+import Playser
 
 // What to play from a disc: resume, play all and the episodes of a series,
 // or resume / start over for a film. Up/down choose, A plays, B goes back.

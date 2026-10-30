@@ -2,3 +2,4 @@ spikes/*/dvdmenu
 build/
 *.o
 *.bgra
+art/out/

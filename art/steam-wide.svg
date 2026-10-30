@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="430" viewBox="0 0 920 430"><defs><radialGradient id="bg" cx="0.261" cy="0.477" r="0.800"><stop offset="0" stop-color="#18223a"/><stop offset="1" stop-color="#0b0f17"/></radialGradient><radialGradient id="warm" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#f5b942" stop-opacity="0.18"/><stop offset="1" stop-color="#f5b942" stop-opacity="0"/></radialGradient>
+  <clipPath id="dclip"><circle cx="0" cy="0" r="150"/></clipPath>
+  <radialGradient id="dbody" cx="0.42" cy="0.38" r="0.75">
+    <stop offset="0" stop-color="#5a6378"/><stop offset="0.6" stop-color="#2a3142"/>
+    <stop offset="1" stop-color="#1a1f2c"/>
+  </radialGradient>
+  <linearGradient id="drim" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#e9eef8"/><stop offset="0.5" stop-color="#6c7690"/>
+    <stop offset="1" stop-color="#cfd6e4"/>
+  </linearGradient>
+  <linearGradient id="dtri" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#ffd27a"/><stop offset="1" stop-color="#f5b942"/>
+  </linearGradient>
+  <radialGradient id="dspot">
+    <stop offset="0" stop-color="#ffffff"/><stop offset="0.25" stop-color="#ffd27a"/>
+    <stop offset="0.6" stop-color="#ff5a3c" stop-opacity="0.55"/>
+    <stop offset="1" stop-color="#ff5a3c" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="dglow" x="-50%" y="-50%" width="200%" height="200%">
+    <feGaussianBlur stdDeviation="3"/>
+  </filter>
+  <filter id="dsheen" x="-10%" y="-10%" width="120%" height="120%">
+    <feGaussianBlur stdDeviation="18.0"/>
+  </filter>
+  <filter id="dsoft" x="-50%" y="-50%" width="200%" height="200%">
+    <feGaussianBlur stdDeviation="14"/>
+  </filter></defs><rect width="920" height="430" fill="url(#bg)"/><circle cx="240" cy="205" r="240" fill="url(#warm)"/><g>
+<circle cx="240" cy="211.0" r="150" fill="#000" opacity="0.45" filter="url(#dsoft)"/>
+<circle cx="240" cy="205" r="150" fill="url(#dbody)"/>
+<g clip-path="url(#dclip)" transform="translate(240,205)"><g opacity="0.30" filter="url(#dsheen)" transform="translate(-240,-205)">
+<path d="M240,205 L110.1,130.0 A150,150 0 0 1 147.7,86.8 Z" fill="#ff4d6d"/>
+<path d="M240,205 L165.0,75.1 A150,150 0 0 1 219.1,56.5 Z" fill="#ffb347"/>
+<path d="M240,205 L240.0,55.0 A150,150 0 0 1 296.2,65.9 Z" fill="#f9f871"/>
+<path d="M240,205 L315.0,75.1 A150,150 0 0 1 358.2,112.7 Z" fill="#4dffb8"/>
+<path d="M240,205 L369.9,130.0 A150,150 0 0 1 388.5,184.1 Z" fill="#4dc3ff"/>
+<path d="M240,205 L390.0,205.0 A150,150 0 0 1 379.1,261.2 Z" fill="#a77bff"/>
+<path d="M240,205 L369.9,280.0 A150,150 0 0 1 332.3,323.2 Z" fill="#ff4d6d"/>
+<path d="M240,205 L315.0,334.9 A150,150 0 0 1 260.9,353.5 Z" fill="#ffb347"/>
+<path d="M240,205 L240.0,355.0 A150,150 0 0 1 183.8,344.1 Z" fill="#f9f871"/>
+<path d="M240,205 L165.0,334.9 A150,150 0 0 1 121.8,297.3 Z" fill="#4dffb8"/>
+<path d="M240,205 L110.1,280.0 A150,150 0 0 1 91.5,225.9 Z" fill="#4dc3ff"/>
+<path d="M240,205 L90.0,205.0 A150,150 0 0 1 100.9,148.8 Z" fill="#a77bff"/>
+</g></g>
+<circle cx="240" cy="205" r="75.0" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="0.60"/><circle cx="240" cy="205" r="87.0" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="0.60"/><circle cx="240" cy="205" r="99.0" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="0.60"/><circle cx="240" cy="205" r="111.0" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="0.60"/><circle cx="240" cy="205" r="123.0" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="0.60"/><circle cx="240" cy="205" r="135.0" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="0.60"/>
+<circle cx="240" cy="205" r="148.2" fill="none" stroke="url(#drim)" stroke-width="3.8"/>
+<circle cx="240" cy="205" r="60.8" fill="#0d121c" opacity="0.55"/>
+<circle cx="240" cy="205" r="45.0" fill="#0b0f17"/>
+<circle cx="240" cy="205" r="45.0" fill="none" stroke="#8a93a8" stroke-opacity="0.5" stroke-width="1.8"/>
+<path d="M220.2,169.0 L277.8,205.0 L220.2,241.0 Z" fill="url(#dtri)" stroke="url(#dtri)" stroke-width="9.0" stroke-linejoin="round"/>
+<line x1="52.5" y1="385.0" x2="164.2" y2="268.6" stroke="#ff5a3c" stroke-width="15.8" stroke-linecap="round" opacity="0.5" filter="url(#dglow)"/>
+<line x1="52.5" y1="385.0" x2="164.2" y2="268.6" stroke="#ffd9c9" stroke-width="5.3" stroke-linecap="round"/>
+<circle cx="164.2" cy="268.6" r="24.0" fill="url(#dspot)"/>
+</g><text x="440" y="248" font-family="Inter Variable" font-weight="800" font-size="118" letter-spacing="-2.4" text-anchor="start" fill="#f2f4f8">Play<tspan fill="#f5b942">ser</tspan></text></svg>

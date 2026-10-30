@@ -131,7 +131,7 @@ Mpv::Mpv(bool fullscreen, const QStringList &options, QObject *parent) : QObject
     if (!m_mpv)
         qFatal("mpv_create failed");
 
-    const QByteArray debug = qgetenv("DISCPLAYER_MPV_LOG");
+    const QByteArray debug = qgetenv("PLAYSER_MPV_LOG");
     if (!debug.isEmpty()) {
         mpv_set_option_string(m_mpv, "log-file", debug.constData());
         mpv_set_option_string(m_mpv, "msg-level", "all=v");
@@ -147,7 +147,7 @@ Mpv::Mpv(bool fullscreen, const QStringList &options, QObject *parent) : QObject
     mpv_set_option_string(m_mpv, "fullscreen", fullscreen ? "yes" : "no");
     mpv_set_option_string(m_mpv, "geometry", "1280x720");
     mpv_set_option_string(m_mpv, "keepaspect-window", "no");
-    mpv_set_option_string(m_mpv, "title", "Disc Player");
+    mpv_set_option_string(m_mpv, "title", "Playser");
     mpv_set_option_string(m_mpv, "cursor-autohide", "always");
     mpv_set_option_string(m_mpv, "input-default-bindings", "no");
     mpv_set_option_string(m_mpv, "osc", "no");

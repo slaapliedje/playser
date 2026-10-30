@@ -1,5 +1,5 @@
 import QtQuick
-import DiscPlayer
+import Playser
 
 // What Blu-ray playback needs, with fixes for anything missing. Shown on
 // first run and whenever something isn't ready; Menu opens it from home.
@@ -34,8 +34,8 @@ FocusScope {
             ok: check.makemkv !== "",
             title: "MakeMKV",
             text: check.makemkv === "flatpak" ? "Using the installed MakeMKV app. It updates on its own."
-                : check.makemkv === "bundled" ? "Using the copy built into Disc Player. Tip: install MakeMKV from "
-                                                + "Discover in Desktop Mode and Disc Player will use it, so it stays up to date."
+                : check.makemkv === "bundled" ? "Using the copy built into Playser. Tip: install MakeMKV from "
+                                                + "Discover in Desktop Mode and Playser will use it, so it stays up to date."
                 : check.makemkv === "system" ? "Using the MakeMKV installed on this system."
                 : "Not found. Install MakeMKV from Discover in Desktop Mode."
         },
@@ -45,7 +45,7 @@ FocusScope {
             text: check.hasKey ? "Registered."
                 : "Needed for Blu-ray. In Desktop Mode, " + (check.makemkv === "flatpak" ? "" : "install MakeMKV from Discover, ")
                   + "open MakeMKV, choose Help → Register and enter your key (buy one at makemkv.com). "
-                  + "Disc Player uses it from there."
+                  + "Playser uses it from there."
         },
         {
             ok: check.opticalDrives === 0 ? null : check.scsiGeneric,
@@ -64,7 +64,7 @@ FocusScope {
                 ? "Off: audio is decoded and sent as PCM (up to 7.1), which works with any TV or receiver. "
                   + "Turn on to send Dolby and DTS tracks to your receiver as they are, for Atmos and DTS:X."
                 : !check.passthroughRule
-                ? "On, but Disc Player couldn't change the audio setting it needs, so audio will be decoded instead."
+                ? "On, but Playser couldn't change the audio setting it needs, so audio will be decoded instead."
                 : check.passthroughRulePending
                 ? "On. Restart once to finish: SteamOS keeps a silent stream on the audio output, "
                   + "and the change that moves it applies after a restart."

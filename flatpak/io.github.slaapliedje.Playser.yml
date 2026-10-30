@@ -1,17 +1,17 @@
-# Disc Player Flatpak. Media modules follow Flathub's io.mpv.Mpv manifest,
+# Playser Flatpak. Media modules follow Flathub's io.mpv.Mpv manifest,
 # trimmed to playback (no encoders, scripting or network extras).
 #
 #   flatpak-builder --user --install --force-clean build/flatpak \
-#       flatpak/io.github.slaapliedje.DiscPlayer.yml
+#       flatpak/io.github.slaapliedje.Playser.yml
 #
 # HDR under gamescope also needs org.freedesktop.Platform.VulkanLayer.gamescope
 # on the runtime's freedesktop branch (25.08 for KDE 6.11), see
 # docs/spike-results.md 0c.
-id: io.github.slaapliedje.DiscPlayer
+id: io.github.slaapliedje.Playser
 runtime: org.kde.Platform
 runtime-version: '6.11'
 sdk: org.kde.Sdk
-command: discplayer
+command: playser
 
 finish-args:
   - --share=ipc
@@ -105,7 +105,7 @@ modules:
     make-install-args:
       - DESTDIR=/             # avoids its ldconfig call
     post-install:
-      - install -Dp -m 644 License.txt /app/share/licenses/discplayer/makemkv-oss-License.txt
+      - install -Dp -m 644 License.txt /app/share/licenses/playser/makemkv-oss-License.txt
     sources:
       - type: archive
         url: https://www.makemkv.com/download/makemkv-oss-2.0.0.tar.gz
@@ -119,7 +119,7 @@ modules:
       - mkdir -p tmp
       - echo accepted > tmp/eula_accepted
       - make install DESTDIR=/ PREFIX=/app
-      - install -Dp -m 644 src/eula_en_linux.txt /app/share/licenses/discplayer/makemkv-eula.txt
+      - install -Dp -m 644 src/eula_en_linux.txt /app/share/licenses/playser/makemkv-eula.txt
     sources:
       - type: archive
         url: https://www.makemkv.com/download/makemkv-bin-2.0.0.tar.gz
@@ -201,7 +201,7 @@ modules:
         tag: v0.41.0
         commit: 41f6a645068483470267271e1d09966ca3b9f413
 
-  - name: discplayer
+  - name: playser
     buildsystem: cmake-ninja
     config-opts:
       - -DCMAKE_BUILD_TYPE=RelWithDebInfo

@@ -1,5 +1,5 @@
 import QtQuick
-import DiscPlayer
+import Playser
 
 // Controller hints along the bottom of a screen:
 //   HintBar { hints: [{ buttons: ["south"], text: "Play" }, ...] }

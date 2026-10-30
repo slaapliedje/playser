@@ -1,5 +1,5 @@
 import QtQuick
-import DiscPlayer
+import Playser
 
 // One controller button, drawn for the pad in use (Theme.buttonStyle) rather
 // than taken from a font. button names SDL's positions, so "south" is A on

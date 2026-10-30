@@ -1,4 +1,4 @@
-# SteamOS Media Player — Plan
+# Playser — Plan
 
 ## Goal
 
@@ -196,7 +196,7 @@ Status (2026-10-28), `app/`:
   (`DiscScreen`: Resume / Play all / episodes; films with a saved position
   get Resume / Play from the beginning). The player takes a queue and
   continues to the next episode; position is saved every 10 s and on stop
-  per disc (`Resume`, `~/.config/discplayer/`), cleared after the last
+  per disc (`Resume`, `~/.config/playser/`), cleared after the last
   item ends. Verified: the *Looney Tunes Collector's Choice Vol. 1*
   Blu-ray lists its 19 cartoons on the box; film resume on the desktop
   (`start=` honoured). Each episode reopens the disc (libbluray + AACS
@@ -230,7 +230,7 @@ Status (2026-10-28), `app/`:
   On/Off" (QtCore Settings `passthrough`) sets mpv `audio-spdif` to
   `ac3,eac3,dts-hd,truehd`; a codec the receiver can't take falls back to
   decoding through the audio watchdog. Turning it on writes
-  `~/.config/pipewire/pipewire-pulse.conf.d/90-discplayer-passthrough.conf`
+  `~/.config/pipewire/pipewire-pulse.conf.d/90-playser-passthrough.conf`
   (Flatpak grants only that folder): a `pulse.rules` entry giving
   `application.process.binary = "sd_dummy"` `node.autoconnect = false`,
   so only speech-dispatcher's silent dummy stays unconnected (real voices,
@@ -297,8 +297,15 @@ Status (2026-10-28), `app/`:
     Looney Tunes disc opens in ~7.5 s through the Optiarc (no
     LibreDrive), episodes play, resume and Play all (episode 1 → 2,
     7.5 s gap) verified 2026-10-29.
-- 🔶 Flatpak manifest `flatpak/io.github.slaapliedje.DiscPlayer.yml`
-  (KDE 6.11, media modules from `io.mpv.Mpv`). App ID is provisional.
+- 🔶 Flatpak manifest `flatpak/io.github.slaapliedje.Playser.yml`
+  (KDE 6.11, media modules from `io.mpv.Mpv`).
+- ✅ **Name: Playser** (2026-10-29; laser + player, no other app by that
+  name on the web, GitHub or Flathub). App ID `io.github.slaapliedje.Playser`,
+  binary `playser`, QML module `Playser`, settings `~/.config/playser/`.
+  Icon, desktop file and metainfo in `app/data/` (both validate).
+  `art/make-art.py` draws the icon and the Steam library images (portrait,
+  wide, hero, logo) as SVG and renders them with resvg into `art/out/`;
+  installed on the box's shortcut and shown on Steam's home row.
   Needs: libmmbd from the user's MakeMKV inside the sandbox.
 
 ### Phase 2 — libdiscnav: DVD menus
@@ -309,7 +316,7 @@ Own repo/library from day one; integrate into the app.
 ### Phase 4 — BD-J (bundled JVM), UHD menus
 
 ### Phase 5 — Distribution
-Flatpak on GitHub releases, Steam artwork + Steam Input template, then
+Flatpak on GitHub releases, Steam artwork (drawn, see Phase 1) + Steam Input template, then
 Flathub submission.
 
 Steam, as a possible second channel (decide later; keep the door open now):
@@ -317,7 +324,8 @@ Steam, as a possible second channel (decide later; keep the door open now):
   tools need no disclosure; only player-facing generated content (art,
   audio, text, store/marketing assets) does. Keep store art and icons
   human-made, or disclose. Re-check Valve's Steamworks docs before
-  submitting.
+  submitting. The current art was drawn by code an assistant wrote, so
+  a Steam store page would disclose it or replace it with human-made art.
 - Free, open-source non-game software is accepted (OBS, Blender, Krita);
   there is a per-app Steam Direct fee.
 - **Biggest risk is disc decryption, not AI.** A Steam build likely must ship

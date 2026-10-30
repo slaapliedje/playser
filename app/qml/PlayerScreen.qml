@@ -1,5 +1,5 @@
 import QtQuick
-import DiscPlayer
+import Playser
 
 FocusScope {
     id: root

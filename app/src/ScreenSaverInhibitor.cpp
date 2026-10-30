@@ -33,7 +33,7 @@ void ScreenSaverInhibitor::setInhibited(bool inhibited)
         return;
     }
     QDBusMessage msg = call("Inhibit");
-    msg << QStringLiteral("Disc Player") << QStringLiteral("Playing video");
+    msg << QStringLiteral("Playser") << QStringLiteral("Playing video");
     auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(msg), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, generation](QDBusPendingCallWatcher *w) {
         w->deleteLater();

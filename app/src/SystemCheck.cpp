@@ -16,11 +16,11 @@ namespace {
 // path: the Flatpak grants just this folder.
 QString passthroughRulePath()
 {
-    return QDir::home().filePath(".config/pipewire/pipewire-pulse.conf.d/90-discplayer-passthrough.conf");
+    return QDir::home().filePath(".config/pipewire/pipewire-pulse.conf.d/90-playser-passthrough.conf");
 }
 
 const char kPassthroughRule[] =
-    "# Disc Player: keep speech-dispatcher's silent dummy stream from holding the audio\n"
+    "# Playser: keep speech-dispatcher's silent dummy stream from holding the audio\n"
     "# output, so Dolby/DTS passthrough can use it exclusively. Delete to undo.\n"
     "pulse.rules = [\n"
     "    {\n"
