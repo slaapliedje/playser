@@ -401,6 +401,17 @@ Status (2026-10-30):
   before the track is selected, so each title segment now starts with an
   empty subpicture announcing the VM's stream. Verified with a forced
   orange/cyan subtitle in the fixture's Title 2 (`tools/make-test-dvd.sh`).
+- ✅ Resume through menus (2026-10-30): `discnav_get_position` (title,
+  time); stopping during a title (or pressing Start/View in one) saves
+  a resume point with its URL (`dvd://N`), which the disc page's Resume
+  plays directly. Setup has "DVD menus: On/Off" (off: the disc page opens,
+  Play = main feature). Activating a button shows its action colours
+  until the jump (too brief to capture in a screenshot).
+- ⬜ Open: one run in ~40 of the test suite lost the highlight after
+  "down" (not reproduced in 27 targeted runs; stray input from the
+  desktop session, seen in other runs, is a suspect); a real commercial
+  DVD on the box; SPU timing (menu graphics are shown when decoded, up
+  to the read-ahead early); `DVDNAV_WAIT` skipped at once.
 - ✅ Tests: `tools/test-dvd-menus.py` drives the app through the test DVD
   (11 checks: highlights, subtitle colours, title end, motion menu,
   chapter skip, menu call, B home) from screenshots and the nav log.

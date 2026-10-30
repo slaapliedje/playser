@@ -39,6 +39,8 @@ FocusScope {
         property bool setupSeen: false
         // send Dolby/DTS to the receiver undecoded (setup screen)
         property bool passthrough: false
+        // DVDs start with their own menus (setup screen)
+        property bool discMenus: true
     }
 
     // codecs sent undecoded when on; one the receiver can't take fails to
@@ -87,9 +89,10 @@ FocusScope {
             const episodes = drive.disc && drive.disc.episodes ? drive.disc.episodes : []
             const extras = drive.disc && drive.disc.extras ? drive.disc.extras : []
             const resume = Resume.get(drive.contentHash || drive.label)
-            if (episodes.length > 1 || extras.length || resume)
+            // with DVD menus off, the disc's page still offers its menu
+            if (episodes.length > 1 || extras.length || resume || (drive.kind === "dvd" && !settings.discMenus))
                 discScreen.open(drive)
-            else if (drive.kind === "dvd")
+            else if (drive.kind === "dvd" && settings.discMenus)
                 player.playMenu(drive) // a DVD starts with its own menus
             else
                 player.play(drive)
@@ -129,6 +132,8 @@ FocusScope {
         anchors.fill: parent
         check: system
         passthrough: settings.passthrough
+        discMenus: settings.discMenus
+        onDiscMenusToggled: settings.discMenus = !settings.discMenus
         onPassthroughToggled: {
             settings.passthrough = !settings.passthrough
             system.setPassthroughRule(settings.passthrough)

@@ -9,8 +9,10 @@ FocusScope {
 
     required property SystemCheck check
     property bool passthrough: false
+    property bool discMenus: true
     signal done()
     signal passthroughToggled()
+    signal discMenusToggled()
 
     visible: false
 
@@ -93,6 +95,13 @@ FocusScope {
                   + "and the change that moves it applies after a restart."
                 : "On: Dolby and DTS go to your receiver as they are. If it can't take one, that track is decoded instead."
         },
+        {
+            ok: null,
+            title: "DVD menus",
+            text: root.discMenus
+                ? "On: DVDs start with their own menus, as on a DVD player."
+                : "Off: a DVD's page opens instead, where Play starts the main feature and Disc menu its menus."
+        },
     ]
 
     Rectangle {
@@ -154,7 +163,7 @@ FocusScope {
         }
     }
 
-    // Check again | Passthrough | Done, left/right to choose
+    // Check again | Passthrough | DVD menus | Done, left/right to choose
     ListView {
         id: buttons
         anchors { left: parent.left; bottom: parent.bottom; margins: Theme.margin }
@@ -162,8 +171,8 @@ FocusScope {
         height: 72 * Theme.scale
         orientation: ListView.Horizontal
         spacing: Theme.spacing
-        model: ["Check again", "passthrough", "Done"]
-        currentIndex: 2
+        model: ["Check again", "passthrough", "menus", "Done"]
+        currentIndex: 3
         delegate: Rectangle {
             required property string modelData
             required property int index
@@ -177,8 +186,9 @@ FocusScope {
             Text {
                 id: label
                 anchors.centerIn: parent
-                text: modelData !== "passthrough" ? modelData
-                    : root.passthrough ? "Passthrough: On" : "Passthrough: Off"
+                text: modelData === "passthrough" ? (root.passthrough ? "Passthrough: On" : "Passthrough: Off")
+                    : modelData === "menus" ? (root.discMenus ? "DVD menus: On" : "DVD menus: Off")
+                    : modelData
                 color: Theme.text
                 font.pixelSize: Theme.fontMedium
             }
@@ -190,6 +200,8 @@ FocusScope {
             }
             else if (currentIndex === 1)
                 root.passthroughToggled()
+            else if (currentIndex === 2)
+                root.discMenusToggled()
             else
                 root.close()
         }

@@ -526,6 +526,13 @@ bool discnav_action(discnav_t *nav, discnav_action_t a)
                                          "title menu", "go up", "previous chapter", "next chapter" };
     pthread_mutex_lock(&nav->lock);
     pci_t *pci = dvdnav_get_current_nav_pci(nav->dvd);
+    /* the selected button's action colours, taken before activating */
+    spu_highlight_t activated = { 0 };
+    int32_t button = 0;
+    dvdnav_highlight_area_t area;
+    if (a == DISCNAV_ACTIVATE && pci && dvdnav_get_current_highlight(nav->dvd, &button) == DVDNAV_STATUS_OK &&
+        button > 0 && dvdnav_get_highlight_area(pci, button, 1, &area) == DVDNAV_STATUS_OK)
+        activated = (spu_highlight_t){ true, area.sx, area.sy, area.ex, area.ey, area.palette };
     dvdnav_status_t st = DVDNAV_STATUS_ERR;
     switch (a) {
     case DISCNAV_UP:           st = dvdnav_upper_button_select(nav->dvd, pci); break;
@@ -544,7 +551,15 @@ bool discnav_action(discnav_t *nav, discnav_action_t a)
           ok ? "" : " (refused)");
     if (a >= DISCNAV_ACTIVATE && ok)
         nav->user_jump = true;
-    update_overlay(nav);
+    if (a == DISCNAV_ACTIVATE && ok && activated.valid) {
+        /* show the button in its action colours until the jump clears it */
+        pthread_mutex_lock(&nav->olock);
+        nav->hl = activated;
+        pthread_mutex_unlock(&nav->olock);
+        emit(nav, DISCNAV_EVENT_OVERLAY);
+    } else {
+        update_overlay(nav);
+    }
     nav->gen++;
     pthread_cond_broadcast(&nav->wake);
     pthread_mutex_unlock(&nav->lock);
