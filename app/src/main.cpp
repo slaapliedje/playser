@@ -204,7 +204,11 @@ int main(int argc, char *argv[])
           "device:list" },
         { "mpv-option", "Set an mpv option, e.g. audio-spdif=ac3 (testing).", "name=value" },
     });
-    args.process(app);
+    // Testing on a handheld through its existing Steam shortcut: extra
+    // arguments from the environment (set with `flatpak override --env=`)
+    QStringList arguments = app.arguments();
+    arguments += qEnvironmentVariable("PLAYSER_EXTRA_ARGS").split(' ', Qt::SkipEmptyParts);
+    args.process(arguments);
 
     Mpv mpv(args.isSet("fullscreen"), args.values("mpv-option"));
     QQmlEngine engine;

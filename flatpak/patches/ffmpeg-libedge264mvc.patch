@@ -1,4 +1,4 @@
-From 57e89be2ffe2f208ed4f314f60419b24ac636028 Mon Sep 17 00:00:00 2001
+From 2d18d7e900d8c9a8f1404e1d0cb35c5d577c1614 Mon Sep 17 00:00:00 2001
 From: Slaapliedje <25948081+slaapliedje@users.noreply.github.com>
 Date: Sat, 31 Oct 2026 15:34:20 -0600
 Subject: [PATCH] avcodec: add H.264 MVC (3D) decoding via edge264-mvc
@@ -7,8 +7,8 @@ Subject: [PATCH] avcodec: add H.264 MVC (3D) decoding via edge264-mvc
  configure                  |   4 +
  libavcodec/Makefile        |   1 +
  libavcodec/allcodecs.c     |   1 +
- libavcodec/libedge264mvc.c | 232 +++++++++++++++++++++++++++++++++++++
- 4 files changed, 238 insertions(+)
+ libavcodec/libedge264mvc.c | 239 +++++++++++++++++++++++++++++++++++++
+ 4 files changed, 245 insertions(+)
  create mode 100644 libavcodec/libedge264mvc.c
 
 diff --git a/configure b/configure
@@ -73,10 +73,10 @@ index 47eded2..b31c1e8 100644
  extern const FFCodec ff_libfdk_aac_decoder;
 diff --git a/libavcodec/libedge264mvc.c b/libavcodec/libedge264mvc.c
 new file mode 100644
-index 0000000..63daa62
+index 0000000..23627d2
 --- /dev/null
 +++ b/libavcodec/libedge264mvc.c
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,239 @@
 +/*
 + * H.264 and H.264 MVC (3D Blu-ray) decoding via edge264-mvc
 + *
@@ -101,8 +101,9 @@ index 0000000..63daa62
 + * @file
 + * Decodes both views of an MVC stream (the dependent view's NAL units, types
 + * 15 and 20, following the base view's in each packet) and outputs them as
-+ * one full side-by-side frame, base (left eye) | dependent (right eye). A 2D
-+ * stream, or a frame whose dependent view is missing, repeats the base view.
++ * one full side-by-side frame, left eye | right eye. The base view is the left
++ * eye unless base_view_right is set (a Blu-ray playlist's MVC base view flag).
++ * A 2D stream, or a frame whose dependent view is missing, repeats the base view.
 + */
 +
 +#include <edge264mvc.h>
@@ -121,7 +122,8 @@ index 0000000..63daa62
 +    AVPacket *pkt;   // packet being sent, from pkt_pos on
 +    int pkt_pos;
 +    int ended;       // edge264mvc_send_end was called
-+    int threads;     // option
++    int threads;     // options
++    int base_view_right;
 +} Libedge264MvcContext;
 +
 +static av_cold int libedge264mvc_init(AVCodecContext *avctx)
@@ -161,8 +163,11 @@ index 0000000..63daa62
 +
 +static int output_frame(AVCodecContext *avctx, const Edge264MvcFrame *f, AVFrame *frame)
 +{
-+    const Edge264MvcView *left = &f->views[0];
-+    const Edge264MvcView *right = f->views[1].planes[0] ? &f->views[1] : left;
++    Libedge264MvcContext *s = avctx->priv_data;
++    const Edge264MvcView *base = &f->views[0];
++    const Edge264MvcView *dep = f->views[1].planes[0] ? &f->views[1] : base;
++    const Edge264MvcView *left = s->base_view_right ? dep : base;
++    const Edge264MvcView *right = s->base_view_right ? base : dep;
 +    AVStereo3D *stereo;
 +    int ret;
 +
@@ -189,13 +194,13 @@ index 0000000..63daa62
 +                            right->planes[p], stride, w, h);
 +    }
 +
-+    frame->pts = left->pts;
++    frame->pts = base->pts;
 +    frame->pkt_dts = AV_NOPTS_VALUE;
-+    if (left->flags & EDGE264MVC_VIEW_IDR)
++    if (base->flags & EDGE264MVC_VIEW_IDR)
 +        frame->flags |= AV_FRAME_FLAG_KEY;
 +    if ((left->flags | right->flags) & EDGE264MVC_VIEW_CONCEALED)
 +        frame->flags |= AV_FRAME_FLAG_CORRUPT;
-+    if (right != left) {
++    if (dep != base) {
 +        stereo = av_stereo3d_create_side_data(frame);
 +        if (!stereo)
 +            return AVERROR(ENOMEM);
@@ -284,6 +289,8 @@ index 0000000..63daa62
 +static const AVOption libedge264mvc_options[] = {
 +    { "edge264mvc_threads", "Worker threads (0: the codec context's thread count; 1: decode on the calling thread)",
 +      OFFSET(threads), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 128, VD },
++    { "base_view_right", "The base view is the right eye (Blu-ray: the playlist's MVC base view flag)",
++      OFFSET(base_view_right), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VD },
 +    { NULL }
 +};
 +
