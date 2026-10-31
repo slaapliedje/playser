@@ -414,6 +414,19 @@ static void wait_a_little(nav_impl_t *nav, nav_stream_t *s)
         ;
 }
 
+/* Without menus, the current playlist is done: on to the next, or stop
+ * after the last. True if it ends the segment now (the next one's start
+ * ends it when the reader gets there). */
+static bool queue_next(nav_impl_t *nav)
+{
+    if (nav->queue_pos + 1 < nav->queue_len && start_playlist(nav, nav->queue_pos + 1, 0))
+        return false;
+    logf_(nav, 0, "end of the queue");
+    nav->stopped = true;
+    emit(nav, DISCNAV_EVENT_STOP);
+    return true;
+}
+
 /* Handles one event; true if it ends the segment. */
 static bool handle_event(nav_impl_t *nav, nav_stream_t *s, const BD_EVENT *ev, bool *wait)
 {
@@ -460,14 +473,8 @@ static bool handle_event(nav_impl_t *nav, nav_stream_t *s, const BD_EVENT *ev, b
               s->got_data ? ": end of segment" : "");
         return true;
     case BD_EVENT_END_OF_TITLE:
-        if (nav->queue) {
-            if (nav->queue_pos + 1 < nav->queue_len && start_playlist(nav, nav->queue_pos + 1, 0))
-                return false; /* the restart ends the segment */
-            logf_(nav, 0, "end of the queue");
-            nav->stopped = true;
-            emit(nav, DISCNAV_EVENT_STOP);
-            return true;
-        }
+        if (nav->queue)
+            return queue_next(nav);
         /* repeated on every read until the disc moves on (BD-J decides) */
         if (!nav->title_ended)
             logf_(nav, 1, "end of title");
@@ -479,10 +486,11 @@ static bool handle_event(nav_impl_t *nav, nav_stream_t *s, const BD_EVENT *ev, b
         return false;
     case BD_EVENT_STILL_TIME:
         /* repeated on every read while the still lasts; without menus
-         * nothing would end an infinite one */
+         * nothing would end an infinite one (bd_read_skip_still() only
+         * ends timed ones): the playlist is done */
         if (!ev->param && nav->queue) {
-            bd_read_skip_still(nav->bd);
-            return false;
+            logf_(nav, 1, "still without end: next playlist");
+            return queue_next(nav);
         }
         if (ev->param && !nav->still_until)
             nav->still_until = now_ms() + ev->param * 1000u;
@@ -547,7 +555,7 @@ static int next_unit(nav_stream_t *s)
         nav->restart = false;
         BD_EVENT ev;
         int n = bd_read_ext(nav->bd, s->buf, UNIT, &ev);
-        bool end = false, wait = false;
+        bool end = false, wait = n == 0 && ev.event == BD_EVENT_NONE; /* nothing happened: don't spin */
         while (ev.event != BD_EVENT_NONE) {
             /* a break before any data just starts this segment there */
             if (handle_event(nav, s, &ev, &wait) && s->got_data)
