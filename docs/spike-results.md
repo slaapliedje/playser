@@ -369,3 +369,27 @@ Product implications:
   side-by-side frames (3840x1080) for mpv, which then plays it as
   ordinary video; half side-by-side and top-and-bottom are a scale away.
   The XR glasses' 3D mode takes full side-by-side directly.
+
+### 0f, part 2 — 3D on the VITURE Pro XR glasses (2026-10-31, Go 2)
+
+- The glasses' Mode button (press and hold) switches 2D/3D. In 3D mode
+  their EDID offers only 3840x1080 (2D: 1920x1080 at 60/90/120 Hz), and
+  they show the left half to the left eye: full side-by-side.
+- Under Game Mode a non-Steam shortcut has no Game Resolution setting and
+  no Scaling Mode was offered, and a fullscreen window gets Steam's 16:9
+  size (1920x1080; 1280x720 without fullscreen): fitted into 3840x1080 it
+  sits in the middle, each eye sees half of its view shifted inwards and
+  the images don't fuse. A **3840x1080 window** (`geometry=3840x1080`,
+  not fullscreen) is shown 1:1 (`gamescopectl screenshot` 3840x1080): each
+  eye gets its full 1920x1080 view.
+- Eye order, checked by the user with generated test images (labelled
+  eyes, a red square in front and a green one behind): left half = left
+  eye. The Hobbit's 3D playlists set `mvc_base_view_r_flag` 1, yet base
+  view on the left is correct; don't swap from that flag until another
+  disc explains it (libedge264mvc keeps a `base_view_right` option).
+- mpv only uses the decoder with `vd=libedge264mvc` and `hwdec=no` (with
+  hwdec it swaps in the hardware h264 decoder: one eye). A raw `.264`
+  needs `demuxer-lavf-format=h264`.
+- In 3D mode a 2D interface is split between the eyes and looks flipped
+  with both open: the UI must be drawn once per eye whenever the display
+  is side by side.
