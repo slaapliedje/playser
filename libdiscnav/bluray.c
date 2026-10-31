@@ -80,6 +80,7 @@ struct nav_impl {
     bool restart;               /* a queued playlist started: new segment */
     unsigned sounds[8];         /* sound effects played, not taken yet (oldest first) */
     int sound_count;
+    bool no_sounds;             /* the disc has none (no sound.bdmv) */
 
     pthread_mutex_t olock;      /* guards the planes; never taken with lock wanted */
     BD_ARGB_BUFFER argb;        /* libbluray draws into argb.buf[plane] */
@@ -824,8 +825,14 @@ static int bdn_take_sound(nav_impl_t *nav, int16_t **pcm, int *channels)
         unsigned id = nav->sounds[0];
         memmove(nav->sounds, nav->sounds + 1, --nav->sound_count * sizeof(nav->sounds[0]));
         BLURAY_SOUND_EFFECT e;
-        if (bd_get_sound_effect(nav->bd, id, &e) <= 0 || !e.num_frames || !e.num_channels) {
-            logf_(nav, 0, "no sound effect %u on the disc", id);
+        int found = nav->no_sounds ? -1 : bd_get_sound_effect(nav->bd, id, &e);
+        if (found < 0 && !nav->no_sounds) {
+            logf_(nav, 0, "the disc plays sound effects but has none (sound.bdmv)");
+            nav->no_sounds = true; /* libbluray would read the disc for it every time */
+        }
+        if (found <= 0 || !e.num_frames || !e.num_channels) {
+            if (found == 0)
+                logf_(nav, 0, "no sound effect %u on the disc", id);
             continue;
         }
         size_t n = (size_t)e.num_frames * e.num_channels;
