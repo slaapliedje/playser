@@ -511,8 +511,11 @@ Status (2026-10-30):
 - ✅ The box (Looney Tunes: Play all on one open).
 
 ### Phase 5 — 3D (Blu-ray 3D and side-by-side files)
-**On hold** (2026-10-29) until the box moves to a room with a 3D TV: an LG
-and a Panasonic plasma (not the living-room 4K LG, which has no 3D).
+**Started** (2026-10-31) on the Legion Go 2 with VITURE XR glasses and *The
+Hobbit* 3D; the 3D TVs (an LG and a Panasonic plasma) come later.
+- ✅ **Spike 0f** (2026-10-31): edge264-mvc decodes the Hobbit's MVC on
+  the Go 2 at 3.4x real time on one core; the drive reads the SSIF at
+  1.45x the film's bitrate (docs/spike-results.md 0f).
 Requested by a user. Test gear: passive and active 3D glasses, VR
 headsets, VITURE XR glasses.
 - **Decoding:** 3D Blu-rays carry the second eye as H.264 MVC

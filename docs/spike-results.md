@@ -325,3 +325,47 @@ Product implications:
 - Navigation needs `bd_play` + `bd_read_ext` feeding the player (as
   libdiscnav does for DVDs): the menus are playlists with video behind
   the graphics.
+
+## 0f — 3D Blu-ray: H.264 MVC decoding (2026-10-31, Legion Go 2)
+
+Question: can the Go 2 decode both eyes of a 3D Blu-ray in real time, and
+read them off the disc fast enough? Disc: *The Hobbit: An Unexpected
+Journey* Extended Edition part 1 (3D, BD-J), in the Optiarc on the Go 2's
+USB-C port (the dock's ports can't power it: "No medium found"). The 3D
+film is playlists 00100/00101, clips 00049 (base view, PID 0x1011, 26.3
+GB) and 00050 (dependent view, PID 0x1012, 9.7 GB), interleaved on disc
+as `SSIF/00049.ssif` (36.0 GB, 1:39:05, about 48 Mb/s on average).
+
+- **FFmpeg 9.0.2 doesn't decode MVC**: its mpegts demuxer exposes the
+  dependent view (stream type 0x20) as plain H.264, and nothing decodes it.
+- **edge264-mvc** (https://github.com/jens-duttke/edge264-mvc, commit
+  4555276, BSD-3-Clause; a fork of edge264, whose README says edge264
+  itself fails on 3D Blu-ray) decodes both views and returns them paired
+  in display order. Checked on the desktop with the ITU's MVC conformance
+  stream MVCDS1 (290 frames, two distinct camera views side by side).
+- `spikes/0f-mvc/mvcdump.c` reads the two clips decrypted through
+  libbluray (`bd_open_file_dec`; reads must be whole 6144-byte units)
+  and writes one Annex B stream, each base access unit followed by the
+  dependent one with the same PTS. Built in the KDE 6.11 SDK, run inside
+  the Playser Flatpak with the app's MakeMKV setup (`LIBAACS_PATH`,
+  `MAKEMKVCON`, `LD_LIBRARY_PATH` as in `setupDecryption()`).
+- **Decoding speed on the Go 2 (Ryzen Z2 Extreme, 16 threads)**, 2 minutes
+  from 30 % into the film (2880 pairs of 1080p24 frames, 566 MB):
+  4.9 s with all cores (about 24x real time, 73 s of CPU), 35 s on one
+  core (about 3.4x real time), 0.6–1.2 GB of memory. Output checked as
+  side-by-side 3840x1080: both eyes correct, with parallax.
+- **Reading**: the separate clips read at only about 2/3 of real time (the
+  drive seeks between them); the interleaved `SSIF` reads at 8.8 MB/s
+  (70 Mb/s, `spikes/0f-mvc/ssifrate.c`), about 1.45x the film's average.
+
+Product implications:
+- 3D is feasible on the Go 2: one core decodes it with room to spare, so
+  multithreading is optional.
+- Read the `SSIF` (both views interleaved), not the two clips. libbluray's
+  playback (`bd_read`) reads only the base clip, so 3D playback needs our
+  own SSIF reader in libdiscnav (extents from the clip info), or a
+  libbluray patch.
+- Integration: an FFmpeg decoder wrapping edge264-mvc that outputs full
+  side-by-side frames (3840x1080) for mpv, which then plays it as
+  ordinary video; half side-by-side and top-and-bottom are a scale away.
+  The XR glasses' 3D mode takes full side-by-side directly.
