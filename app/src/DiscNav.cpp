@@ -65,6 +65,11 @@ struct Router
     DiscNav *receiver = nullptr;
 } g_router;
 
+// One disc open at a time. An open given up on (Cancel, then Play again)
+// still runs in libmmbd, and a second MakeMKV helper on the drive meanwhile
+// slows both to a crawl: the next open waits until it has been closed.
+std::mutex g_openMutex;
+
 void freeIfDone(NavContext *ctx)
 {
     bool done;
@@ -225,7 +230,15 @@ void DiscNav::start(bool menus, std::function<discnav_t *(NavContext *)> openFn)
     auto *ctx = new NavContext;
     // a Blu-ray's open takes seconds (AACS, BD-J's JVM): off the UI thread
     std::thread([this, ctx, generation, openFn = std::move(openFn)] {
+        std::unique_lock open(g_openMutex);
         ctx->nav = openFn(ctx);
+        if (generation != m_generation) {
+            // given up on meanwhile: let go of the drive before the next open
+            discnav_close(ctx->nav);
+            delete ctx;
+            return;
+        }
+        open.unlock();
         QMetaObject::invokeMethod(this, [this, ctx, generation] { opened(ctx, generation); }, Qt::QueuedConnection);
     }).detach();
 }
@@ -236,6 +249,7 @@ void DiscNav::opened(NavContext *ctx, unsigned generation)
         // closed meanwhile, or not a disc: let it go (off this thread)
         const bool failed = generation == m_generation;
         std::thread([ctx] {
+            std::lock_guard open(g_openMutex);
             discnav_close(ctx->nav);
             delete ctx;
         }).detach();

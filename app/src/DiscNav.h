@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QtQml/qqmlregistration.h>
+#include <atomic>
 #include <functional>
 
 #include "Mpv.h"
@@ -109,7 +110,9 @@ private:
 
     QPointer<Mpv> m_mpv;
     NavContext *m_ctx = nullptr;
-    unsigned m_generation = 0; // bumped by open() and close(): stale opens are dropped
+    // bumped by open() and close(): stale opens are dropped (read by the
+    // opening thread)
+    std::atomic<unsigned> m_generation = 0;
     bool m_inMenu = false;
     bool m_menus = true;
     int m_title = 0;
