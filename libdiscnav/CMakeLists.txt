@@ -11,7 +11,7 @@ pkg_check_modules(DVDNAV REQUIRED IMPORTED_TARGET dvdnav)
 pkg_check_modules(BLURAY REQUIRED IMPORTED_TARGET libbluray)
 find_package(Threads REQUIRED)
 
-add_library(discnav STATIC discnav.c dvd.c bluray.c spu.c)
+add_library(discnav STATIC discnav.c dvd.c bluray.c mvc.c spu.c)
 set_target_properties(discnav PROPERTIES C_STANDARD 11 POSITION_INDEPENDENT_CODE ON
                                          PUBLIC_HEADER discnav.h)
 target_include_directories(discnav PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)

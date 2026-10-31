@@ -291,6 +291,7 @@ void DiscNav::close()
         m_mpv->stop(); // cancels and closes the stream; the context goes with it
         m_mpv->setOverlay(kMenuOverlay, QImage());
         m_mpv->setStallCheck(true);
+        m_mpv->setStereoVideo(false);
         m_mpv->setMpvProperty("sub-lavc-o", QVariantMap());
     }
     m_overlayShown = false;
@@ -408,6 +409,12 @@ bool DiscNav::selectStream(const QString &type, const QVariant &id)
 void DiscNav::load()
 {
     m_loadPending = true;
+    // 3D discs with 3D glasses connected (in either mode, so switching
+    // mid-film works): both views, decoded side by side; Mpv crops to one
+    // eye while the glasses show 2D
+    const bool stereo = m_mpv->stereoDisplay() && discnav_has_stereo(m_ctx->nav);
+    discnav_set_stereo(m_ctx->nav, stereo);
+    m_mpv->setStereoVideo(stereo);
     m_mpv->loadFile(QStringLiteral("discnav://"),
                     discnav_format(m_ctx->nav) == DISCNAV_BLURAY ? kBdSegmentOptions : kDvdSegmentOptions);
 }

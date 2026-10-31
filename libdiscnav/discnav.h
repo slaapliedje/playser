@@ -193,6 +193,14 @@ bool discnav_overlay_size(discnav_t *nav, int *w, int *h);
  * buffer is then cleared). */
 bool discnav_render_overlay(discnav_t *nav, uint8_t *rgba, int w, int h);
 
+/* Blu-ray 3D: whether the disc has 3D content. */
+bool discnav_has_stereo(discnav_t *nav);
+/* Blu-ray 3D: from the next segment on, a 3D playlist's segments carry
+ * both views, the dependent view's access units after the base view's in
+ * the same PES (PID 0x1011, for an MVC decoder); else the base view only.
+ * Costs reading a second clip alongside (about 40% more data). */
+void discnav_set_stereo(discnav_t *nav, bool on);
+
 #ifdef __cplusplus
 }
 #endif

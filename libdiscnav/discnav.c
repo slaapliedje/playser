@@ -138,3 +138,14 @@ bool discnav_render_overlay(discnav_t *nav, uint8_t *rgba, int w, int h)
 {
     return nav->be->render_overlay(nav->impl, rgba, w, h);
 }
+
+bool discnav_has_stereo(discnav_t *nav)
+{
+    return nav->be->has_stereo && nav->be->has_stereo(nav->impl);
+}
+
+void discnav_set_stereo(discnav_t *nav, bool on)
+{
+    if (nav->be->set_stereo)
+        nav->be->set_stereo(nav->impl, on);
+}

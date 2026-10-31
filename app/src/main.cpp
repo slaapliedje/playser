@@ -123,16 +123,25 @@ static void setupDecryption()
     }
 }
 
-// A side-by-side 3D display, as its mode (empty: none): XR glasses that
-// show the left half of a 3840x1080 picture to the left eye. VITURE glasses
-// switch to that mode (and offer only it) when set to 3D with their Mode
-// button; in 2D they offer 1920x1080. PLAYSER_SBS=WxH or "off" overrides.
-static QSize sideBySideDisplay()
+// 3D glasses: XR glasses that show the left half of a 3840x1080 picture to
+// the left eye. VITURE glasses switch to that mode (and offer only it) when
+// set to 3D with their Mode button; in 2D they offer 1920x1080.
+// PLAYSER_SBS=WxH (in 3D mode) or "off" overrides.
+struct StereoDisplay {
+    bool connected = false;
+    QSize sideBySide; // in 3D mode: its mode
+};
+
+static StereoDisplay stereoDisplay()
 {
+    StereoDisplay found;
     const QString forced = qEnvironmentVariable("PLAYSER_SBS");
     if (!forced.isEmpty()) {
         const QStringList wh = forced.split('x');
-        return wh.size() == 2 ? QSize(wh[0].toInt(), wh[1].toInt()) : QSize();
+        found.connected = wh.size() == 2;
+        if (found.connected)
+            found.sideBySide = QSize(wh[0].toInt(), wh[1].toInt());
+        return found;
     }
     const QDir drm("/sys/class/drm");
     for (const QString &name : drm.entryList({ "card*-*" }, QDir::Dirs)) {
@@ -148,14 +157,17 @@ static QSize sideBySideDisplay()
         for (int at = 54; at + 18 <= qMin<int>(edid.size(), 126); at += 18)
             if (!edid[at] && !edid[at + 1] && uchar(edid[at + 3]) == 0xfc)
                 glasses = edid.mid(at + 5, 13).startsWith("VITURE");
+        if (!glasses)
+            continue;
+        found.connected = true;
         const QList<QByteArray> mode = read("modes").split('\n').value(0).split('x');
-        if (glasses && mode.size() == 2) {
+        if (mode.size() == 2) {
             const QSize size(mode[0].toInt(), mode[1].toInt());
             if (size.width() >= size.height() * 3) // 32:9: both eyes' views
-                return size;
+                found.sideBySide = size;
         }
     }
-    return {};
+    return found;
 }
 
 // mpv key names (from its window) -> the Qt keys the QML UI handles
@@ -251,9 +263,14 @@ int main(int argc, char *argv[])
     mpv.setStereoVideo(args.isSet("stereo"));
     // XR glasses switched between 2D and 3D by hand: follow them
     QTimer displayCheck;
-    QObject::connect(&displayCheck, &QTimer::timeout, &mpv, [&mpv] { mpv.setSideBySide(sideBySideDisplay()); });
+    auto checkDisplay = [&mpv] {
+        const StereoDisplay display = stereoDisplay();
+        mpv.setStereoDisplay(display.connected);
+        mpv.setSideBySide(display.sideBySide);
+    };
+    QObject::connect(&displayCheck, &QTimer::timeout, &mpv, checkDisplay);
     displayCheck.start(2000);
-    mpv.setSideBySide(sideBySideDisplay());
+    checkDisplay();
     QQmlEngine engine;
     QObject::connect(&engine, &QQmlEngine::quit, &app, &QGuiApplication::quit);
     quitOnSignals(&app);

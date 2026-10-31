@@ -26,9 +26,12 @@
  * - Without menus (discnav_open_playlists) the disc isn't started:
  *   bd_select_playlist() plays each playlist of the queue in turn, the
  *   next on END_OF_TITLE, one segment each, on the one open disc.
+ * - 3D (discnav_set_stereo): a segment of a 3D playlist goes through
+ *   mvc.c, which merges the dependent view's clip into the stream.
  */
 #define _GNU_SOURCE
 #include "internal.h"
+#include "mvc.h"
 
 #include <errno.h>
 #include <pthread.h>
@@ -81,6 +84,9 @@ struct nav_impl {
     unsigned sounds[8];         /* sound effects played, not taken yet (oldest first) */
     int sound_count;
     bool no_sounds;             /* the disc has none (no sound.bdmv) */
+    bool stereo;                /* merge the dependent view (discnav_set_stereo) */
+    char dep_clips[32][6];      /* the playlist's dependent-view clips, per play item */
+    int dep_count;
 
     pthread_mutex_t olock;      /* guards the planes; never taken with lock wanted */
     BD_ARGB_BUFFER argb;        /* libbluray draws into argb.buf[plane] */
@@ -95,6 +101,8 @@ struct nav_stream {
     uint8_t buf[UNIT];
     int pos, len;
     bool cancel, eof, got_data;
+    mvc_t *mvc;                 /* 3D: the merge, decided at the first data */
+    int dep_item;               /* the play item mvc is set up for */
 };
 
 static uint64_t now_ms(void)
@@ -384,6 +392,9 @@ static void load_playlist(nav_impl_t *nav, int playlist)
     nav->playlist = playlist;
     nav->playitem = 0;
     nav->logged_aid = nav->logged_sid = -2;
+    nav->dep_count = mvc_dep_clips(nav->bd, playlist, nav->dep_clips, 32);
+    if (nav->dep_count)
+        logf_(nav, 1, "%05d.mpls is 3D (dependent view %s.m2ts)", playlist, nav->dep_clips[0]);
 }
 
 /* Without menus: plays queue[pos] from `seconds` (lock held, or opening). */
@@ -549,6 +560,17 @@ static bool handle_event(nav_impl_t *nav, nav_stream_t *s, const BD_EVENT *ev, b
     }
 }
 
+/* mvc.c reads the dependent view's clip through bd, under our lock. */
+static void read_lock(void *user)
+{
+    pthread_mutex_lock(&((nav_impl_t *)user)->lock);
+}
+
+static void read_unlock(void *user)
+{
+    pthread_mutex_unlock(&((nav_impl_t *)user)->lock);
+}
+
 /* The next unit: 1 = data in s->buf, 0 = end of segment, -1 = error/cancel. */
 static int next_unit(nav_stream_t *s)
 {
@@ -600,6 +622,15 @@ static int next_unit(nav_stream_t *s)
         if (n > 0) {
             nav->still_until = 0;
             nav->title_ended = false;
+            if (!s->got_data && nav->stereo && nav->dep_count && !s->mvc) {
+                s->mvc = mvc_new(nav->bd, read_lock, read_unlock, nav);
+                s->dep_item = -1;
+            }
+            if (s->mvc && s->dep_item != nav->playitem) {
+                s->dep_item = nav->playitem;
+                mvc_set_clip(s->mvc, nav->playitem >= 0 && nav->playitem < nav->dep_count
+                                         ? nav->dep_clips[nav->playitem] : "");
+            }
             s->got_data = true;
             s->len = n;
             ret = 1;
@@ -622,11 +653,33 @@ static nav_stream_t *bdn_stream_open(nav_impl_t *nav)
 
 static int64_t bdn_stream_read(nav_stream_t *s, void *buf, uint64_t n)
 {
+    if (s->mvc) {
+        /* 3D: the units go through the merge (outside our lock: it takes
+         * it to read the dependent clip) */
+        for (;;) {
+            size_t got = mvc_take(s->mvc, buf, n);
+            if (got)
+                return (int64_t)got;
+            int r = next_unit(s);
+            if (r < 0)
+                return r;
+            if (r == 0) {
+                mvc_flush(s->mvc);
+                got = mvc_take(s->mvc, buf, n);
+                return (int64_t)got;
+            }
+            mvc_feed(s->mvc, s->buf, (size_t)s->len);
+        }
+    }
     if (s->pos >= s->len) {
         int r = next_unit(s);
         if (r <= 0)
             return r;
         s->pos = 0;
+        if (s->mvc) { /* the first data made it a 3D segment */
+            mvc_feed(s->mvc, s->buf, (size_t)s->len);
+            return bdn_stream_read(s, buf, n);
+        }
     }
     uint64_t avail = (uint64_t)(s->len - s->pos);
     if (n > avail)
@@ -647,7 +700,24 @@ static void bdn_stream_cancel(nav_stream_t *s)
 
 static void bdn_stream_close(nav_stream_t *s)
 {
+    mvc_free(s->mvc);
     free(s);
+}
+
+static void bdn_set_stereo(nav_impl_t *nav, bool on)
+{
+    pthread_mutex_lock(&nav->lock);
+    nav->stereo = on;
+    pthread_mutex_unlock(&nav->lock);
+}
+
+static bool bdn_has_stereo(nav_impl_t *nav)
+{
+    pthread_mutex_lock(&nav->lock);
+    const BLURAY_DISC_INFO *di = nav->bd ? bd_get_disc_info(nav->bd) : NULL;
+    bool has = di && di->content_exist_3D;
+    pthread_mutex_unlock(&nav->lock);
+    return has;
 }
 
 static void bdn_segment_opened(nav_impl_t *nav)
@@ -1075,4 +1145,6 @@ const nav_backend_t bd_backend = {
     .get_palette = bdn_get_palette,
     .overlay_size = bdn_overlay_size,
     .render_overlay = bdn_render_overlay,
+    .set_stereo = bdn_set_stereo,
+    .has_stereo = bdn_has_stereo,
 };

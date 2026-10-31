@@ -73,6 +73,9 @@ public:
     bool sideBySide() const { return !m_sbsSize.isEmpty(); }
     // The video being loaded is full side-by-side 3D (libedge264mvc's output).
     void setStereoVideo(bool on);
+    // A display that can show 3D is connected (XR glasses, in 2D or 3D mode).
+    void setStereoDisplay(bool on) { m_stereoDisplay = on; }
+    bool stereoDisplay() const { return m_stereoDisplay; }
     void screenshot(const QString &path);
 
     bool paused() const { return m_paused; }
@@ -161,6 +164,7 @@ private:
     bool m_fullscreen = false; // asked for at startup
     QSize m_sbsSize;
     bool m_stereoVideo = false;
+    bool m_stereoDisplay = false;
     QHash<QString, QString> m_stereoOptions; // as last set by applyStereo
     QSize m_videoDisplay; // the video's display size (aspect applied)
     bool m_stallCheck = true;
