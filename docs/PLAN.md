@@ -506,7 +506,7 @@ Status (2026-10-30):
   its menus are in the disc's menu video.)
 - ✅ B in a Blu-ray menu (no "go up" on Blu-ray: a submenu has its own
   return button) or a DVD's top menu asks "Leave the disc?".
-- ⬜ The box (Looney Tunes: Play all on one open).
+- ✅ The box (Looney Tunes: Play all on one open).
 
 ### Phase 5 — 3D (Blu-ray 3D and side-by-side files)
 **On hold** (2026-10-29) until the box moves to a room with a 3D TV: an LG
