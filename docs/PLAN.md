@@ -471,9 +471,25 @@ Status (2026-10-30):
   the box (HDMV, a playlist per cartoon).
 - ✅ MakeMKV's helper (makemkvcon guiserver) no longer outlives the app
   when a disc is still opening at exit (quit or SIGTERM).
-- ⬜ Not yet: Play all without reopening the disc (the
-  original reason for navigation mode), the background graphics plane,
-  menu sound effects.
+- ✅ Menu sound effects (2026-10-31): `DISCNAV_EVENT_SOUND` /
+  `discnav_take_sound()` (HDMV buttons and BD-J both play from
+  `sound.bdmv`); the app plays them through SDL's audio at mpv's volume,
+  opening the output per sound, and only with audio decoded (with
+  passthrough the sink is mpv's alone, and players leave them out of a
+  bitstream). Verified: the playback side (SDL's disk driver: length and
+  gain exact; the PipeWire stream comes and goes). Neither Legend nor
+  Looney Tunes has a `sound.bdmv`: the disc side waits for a disc that
+  does.
+- ✅ A slow open says why after 20 s ("A dirty or scratched disc can take
+  a minute"): Legend's copy has read errors (MakeMKV's own scan reports
+  them) and opens in anything from 0.6 to 60 s. Quitting during a stuck
+  open no longer dies of SIGPIPE: SIGPIPE is ignored and the app leaves
+  5 s into a teardown that waits on libmmbd.
+- ✅ Tested discs: `docs/tested-discs.md`.
+- ⬜ The background graphics plane: libbluray doesn't implement it
+  (`HStillImageBackgroundConfiguration.displayImage()` and translucent
+  `setColor()` are logged stubs). Needs a libbluray patch and a third
+  overlay plane; waiting for a disc that uses it.
 
 ### Phase 4 — Blu-ray HDMV menus
 libbluray runs the HDMV VM and decodes the IG menus; pass its overlays to
@@ -490,7 +506,7 @@ Status (2026-10-30):
   its menus are in the disc's menu video.)
 - ✅ B in a Blu-ray menu (no "go up" on Blu-ray: a submenu has its own
   return button) or a DVD's top menu asks "Leave the disc?".
-- ⬜ The box; menu sound effects.
+- ⬜ The box (Looney Tunes: Play all on one open).
 
 ### Phase 5 — 3D (Blu-ray 3D and side-by-side files)
 **On hold** (2026-10-29) until the box moves to a room with a 3D TV: an LG
