@@ -241,8 +241,10 @@ void Mpv::updateVideoRect()
 {
     QRect rect;
     QSize display = m_videoDisplay;
-    if (m_stereoVideo && sideBySide())
-        display.setWidth(display.width() / 2); // one eye's half
+    // one eye's half, shown or cropped (the decoded frame's: mpv's display
+    // size follows the crop); Blu-ray 3D has square pixels
+    if (m_stereoVideo && !m_videoSize.isEmpty())
+        display = QSize(m_videoSize.width() / 2, m_videoSize.height());
     if (!display.isEmpty() && !m_osdSize.isEmpty()) {
         const QSize fit = display.scaled(m_osdSize, Qt::KeepAspectRatio);
         rect = QRect(QPoint((m_osdSize.width() - fit.width()) / 2, (m_osdSize.height() - fit.height()) / 2), fit);
@@ -340,17 +342,29 @@ void Mpv::setStereoVideo(bool on)
     applyStereo();
 }
 
-// 3D video on a side-by-side display: libedge264mvc decodes both eyes (in
-// software: with hwdec mpv swaps in the hardware h264 decoder, one eye).
-// 2D video there: both eyes get the same picture (hwdec copies frames back
-// for the filter). Elsewhere: the base view, decoded as usual.
+// 3D video: libedge264mvc decodes both eyes, side by side (in software:
+// with hwdec mpv swaps in the hardware h264 decoder, which can't take both
+// views interleaved). A 2D display gets the left eye, cropped: unlike a
+// decoder change, a crop applies mid-film without restarting anything.
+// 2D video on a side-by-side display: both eyes get the same picture (hwdec
+// copies frames back for the filter).
 void Mpv::applyStereo()
 {
-    const bool stereo = m_stereoVideo && sideBySide();
     const bool flat = !m_stereoVideo && sideBySide();
-    setMpvProperty("vd", stereo ? "libedge264mvc" : "");
-    setMpvProperty("hwdec", stereo ? "no" : flat ? "auto-copy-safe" : "auto-safe");
-    setMpvProperty("vf", flat ? "lavfi=[split[l][r];[l][r]hstack]" : "");
+    // only on change: setting vd or hwdec, even to the same value, restarts
+    // the decoder
+    auto set = [this](const char *name, const QString &value) {
+        QString &applied = m_stereoOptions[name];
+        if (applied != value) {
+            applied = value;
+            setMpvProperty(name, value);
+        }
+    };
+    set("vd", m_stereoVideo ? "libedge264mvc" : "");
+    set("hwdec", m_stereoVideo ? "no" : flat ? "auto-copy-safe" : "auto-safe");
+    set("vf", flat ? "lavfi=[split[l][r];[l][r]hstack]" : "");
+    const bool crop = m_stereoVideo && !sideBySide() && !m_videoSize.isEmpty();
+    set("video-crop", crop ? QStringLiteral("%1x%2+0+0").arg(m_videoSize.width() / 2).arg(m_videoSize.height()) : "");
     updateOsdSize();
 }
 
@@ -523,7 +537,7 @@ void Mpv::processEvents()
                     if (size != m_videoSize || display != m_videoDisplay) {
                         m_videoSize = size;
                         m_videoDisplay = display;
-                        updateVideoRect();
+                        applyStereo(); // the crop follows the video's size
                         emit videoGeometryChanged();
                     }
                 }

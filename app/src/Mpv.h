@@ -161,6 +161,7 @@ private:
     bool m_fullscreen = false; // asked for at startup
     QSize m_sbsSize;
     bool m_stereoVideo = false;
+    QHash<QString, QString> m_stereoOptions; // as last set by applyStereo
     QSize m_videoDisplay; // the video's display size (aspect applied)
     bool m_stallCheck = true;
     QSize m_videoSize;
