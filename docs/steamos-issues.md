@@ -1,8 +1,8 @@
 # SteamOS issue drafts
 
 Drafts for https://github.com/ValveSoftware/SteamOS/issues (Valve takes
-issues there, not pull requests). Not filed: they go out under the user's
-GitHub account. Searched 2026-10-31: no existing issue about `sg`, MakeMKV
+issues there, not pull requests). They go out under the user's GitHub
+account: file only when the user says so. Searched 2026-10-31: no existing issue about `sg`, MakeMKV
 or optical drives; #989 covers HDMI passthrough.
 
 ## Filed: load the `sg` module
@@ -17,7 +17,7 @@ client 1792618285 stable, SteamOS main branch).
 
 * SteamOS version: 3.10 (build 20261026.1000), kernel 7.2.7-valve2-2-neptune
 * Opted into Steam client beta?: No
-* Opted into SteamOS beta?: No
+* Opted into SteamOS beta?: Yes (main branch)
 * Hardware: desktop PC running SteamOS, Sony Optiarc BC-5500S Blu-ray drive over USB
 
 #### Please describe your issue in as much detail as possible:
