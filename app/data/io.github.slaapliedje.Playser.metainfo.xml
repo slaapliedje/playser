@@ -12,14 +12,24 @@
   <launchable type="desktop-id">io.github.slaapliedje.Playser.desktop</launchable>
   <description>
     <p>
-      A controller-first disc player for the TV, made for SteamOS Game Mode.
-      Put in a disc and press play: Playser finds the main feature, shows the
-      disc's title and art, and plays it in HDR with surround sound, sent to
-      your receiver as-is if you like.
+      Playser is a disc player for the TV, made for SteamOS Game Mode and the
+      controller in your hand. Put in a DVD, Blu-ray or 4K UHD disc: Playser
+      finds the main feature, shows the disc's title and art, and plays it
+      with its menus, in HDR, with surround sound.
     </p>
+    <ul>
+      <li>DVD and Blu-ray menus, including Java (BD-J) menus</li>
+      <li>4K UHD Blu-ray in HDR10</li>
+      <li>Surround sound decoded, or sent to your receiver as-is (Dolby Digital, TrueHD, DTS-HD Master Audio)</li>
+      <li>Disc titles, episode lists and art from TheDiscDB, with Play all for TV discs</li>
+      <li>Picks up where you left off</li>
+      <li>Audio and subtitle choice from the controller</li>
+      <li>Works with Steam Input and any common gamepad</li>
+    </ul>
     <p>
       Blu-ray and 4K UHD discs need MakeMKV, which you buy separately; DVDs
-      play without it.
+      play without it. 4K UHD also needs a drive that MakeMKV can read UHD
+      discs with (LibreDrive).
     </p>
   </description>
   <releases>
