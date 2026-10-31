@@ -51,7 +51,12 @@ drive appears.
 3. It reports no usable optical drives; `ls /dev/sg*` finds nothing.
 4. Run `sudo modprobe sg` and unplug and replug the drive: MakeMKV now sees the drive and reads the disc.
 
-## Comment on #989 (passthrough over HDMI)
+## Posted: comment on #989 (passthrough over HDMI)
+
+Posted 2026-10-31:
+https://github.com/ValveSoftware/SteamOS/issues/989#issuecomment-6548839551
+(the text below, plus the SteamOS build and the `pulse.rules` snippet as a
+workaround for other users).
 
 Title of #989: "Passthrough surround sound audio formats over HDMI".
 
