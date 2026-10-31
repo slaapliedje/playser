@@ -5,7 +5,11 @@ issues there, not pull requests). Not filed: they go out under the user's
 GitHub account. Searched 2026-10-31: no existing issue about `sg`, MakeMKV
 or optical drives; #989 covers HDMI passthrough.
 
-## New issue: load the `sg` module
+## Filed: load the `sg` module
+
+Filed 2026-10-31 as https://github.com/ValveSoftware/SteamOS/issues/3021
+(the text below, with the template's Steam client version and branch:
+client 1792618285 stable, SteamOS main branch).
 
 **Title:** Load the `sg` kernel module so optical drives work with Blu-ray software (MakeMKV)
 
