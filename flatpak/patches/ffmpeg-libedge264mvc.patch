@@ -1,0 +1,314 @@
+From 57e89be2ffe2f208ed4f314f60419b24ac636028 Mon Sep 17 00:00:00 2001
+From: Slaapliedje <25948081+slaapliedje@users.noreply.github.com>
+Date: Sat, 31 Oct 2026 15:34:20 -0600
+Subject: [PATCH] avcodec: add H.264 MVC (3D) decoding via edge264-mvc
+
+---
+ configure                  |   4 +
+ libavcodec/Makefile        |   1 +
+ libavcodec/allcodecs.c     |   1 +
+ libavcodec/libedge264mvc.c | 232 +++++++++++++++++++++++++++++++++++++
+ 4 files changed, 238 insertions(+)
+ create mode 100644 libavcodec/libedge264mvc.c
+
+diff --git a/configure b/configure
+index 374bd5c..5156a4a 100755
+--- a/configure
++++ b/configure
+@@ -226,6 +226,7 @@ External library support:
+   --enable-libcdio         enable audio CD grabbing with libcdio [no]
+   --enable-libcodec2       enable codec2 en/decoding using libcodec2 [no]
+   --enable-libdav1d        enable AV1 decoding via libdav1d [no]
++  --enable-libedge264mvc   enable H.264 MVC (3D) decoding via edge264-mvc [no]
+   --enable-libdavs2        enable AVS2 decoding via libdavs2 [no]
+   --enable-libdc1394       enable IIDC-1394 grabbing using libdc1394
+                            and libraw1394 [no]
+@@ -2084,6 +2085,7 @@ EXTERNAL_LIBRARY_LIST="
+     libcodec2
+     libdav1d
+     libdc1394
++    libedge264mvc
+     libflite
+     libfontconfig
+     libfreetype
+@@ -3822,6 +3824,7 @@ libaribcaption_decoder_deps="libaribcaption"
+ libcodec2_decoder_deps="libcodec2"
+ libcodec2_encoder_deps="libcodec2"
+ libdav1d_decoder_deps="libdav1d"
++libedge264mvc_decoder_deps="libedge264mvc"
+ libdav1d_decoder_select="itut_t35"
+ libdavs2_decoder_deps="libdavs2"
+ libdavs2_decoder_select="avs2_parser"
+@@ -7332,6 +7335,7 @@ enabled libbs2b           && require_pkg_config libbs2b libbs2b bs2b.h bs2b_open
+ enabled libcaca           && require_pkg_config libcaca caca caca.h caca_create_canvas
+ enabled libcodec2         && require libcodec2 codec2/codec2.h codec2_create -lcodec2
+ enabled libdav1d          && require_pkg_config libdav1d "dav1d >= 1.0.0" "dav1d/dav1d.h" dav1d_version
++enabled libedge264mvc     && require libedge264mvc edge264mvc.h edge264mvc_open -ledge264mvc
+ enabled libdavs2          && require_pkg_config libdavs2 "davs2 >= 1.6.0" davs2.h davs2_decoder_open
+ enabled libdc1394         && require_pkg_config libdc1394 libdc1394-2 dc1394/dc1394.h dc1394_new
+ enabled libdrm            && check_pkg_config libdrm libdrm xf86drm.h drmGetVersion
+diff --git a/libavcodec/Makefile b/libavcodec/Makefile
+index 95ba308..18eedee 100644
+--- a/libavcodec/Makefile
++++ b/libavcodec/Makefile
+@@ -1172,6 +1172,7 @@ OBJS-$(CONFIG_LIBARIBCAPTION_DECODER)     += libaribcaption.o ass.o
+ OBJS-$(CONFIG_LIBCODEC2_DECODER)          += libcodec2.o
+ OBJS-$(CONFIG_LIBCODEC2_ENCODER)          += libcodec2.o
+ OBJS-$(CONFIG_LIBDAV1D_DECODER)           += libdav1d.o av1_parse.o
++OBJS-$(CONFIG_LIBEDGE264MVC_DECODER)      += libedge264mvc.o
+ OBJS-$(CONFIG_LIBDAVS2_DECODER)           += libdavs2.o
+ OBJS-$(CONFIG_LIBFDK_AAC_DECODER)         += libfdk-aacdec.o
+ OBJS-$(CONFIG_LIBFDK_AAC_ENCODER)         += libfdk-aacenc.o
+diff --git a/libavcodec/allcodecs.c b/libavcodec/allcodecs.c
+index 47eded2..b31c1e8 100644
+--- a/libavcodec/allcodecs.c
++++ b/libavcodec/allcodecs.c
+@@ -774,6 +774,7 @@ extern const FFCodec ff_libaribb24_decoder;
+ extern const FFCodec ff_libcodec2_encoder;
+ extern const FFCodec ff_libcodec2_decoder;
+ extern const FFCodec ff_libdav1d_decoder;
++extern const FFCodec ff_libedge264mvc_decoder;
+ extern const FFCodec ff_libdavs2_decoder;
+ extern const FFCodec ff_libfdk_aac_encoder;
+ extern const FFCodec ff_libfdk_aac_decoder;
+diff --git a/libavcodec/libedge264mvc.c b/libavcodec/libedge264mvc.c
+new file mode 100644
+index 0000000..63daa62
+--- /dev/null
++++ b/libavcodec/libedge264mvc.c
+@@ -0,0 +1,232 @@
++/*
++ * H.264 and H.264 MVC (3D Blu-ray) decoding via edge264-mvc
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++/**
++ * @file
++ * Decodes both views of an MVC stream (the dependent view's NAL units, types
++ * 15 and 20, following the base view's in each packet) and outputs them as
++ * one full side-by-side frame, base (left eye) | dependent (right eye). A 2D
++ * stream, or a frame whose dependent view is missing, repeats the base view.
++ */
++
++#include <edge264mvc.h>
++
++#include "libavutil/imgutils.h"
++#include "libavutil/opt.h"
++#include "libavutil/stereo3d.h"
++
++#include "avcodec.h"
++#include "codec_internal.h"
++#include "decode.h"
++
++typedef struct Libedge264MvcContext {
++    const AVClass *class;
++    Edge264MvcDecoder *dec;
++    AVPacket *pkt;   // packet being sent, from pkt_pos on
++    int pkt_pos;
++    int ended;       // edge264mvc_send_end was called
++    int threads;     // option
++} Libedge264MvcContext;
++
++static av_cold int libedge264mvc_init(AVCodecContext *avctx)
++{
++    Libedge264MvcContext *s = avctx->priv_data;
++    Edge264MvcSettings settings;
++
++    edge264mvc_default_settings(&settings);
++    settings.n_threads = s->threads ? s->threads : avctx->thread_count;
++    if (edge264mvc_open(&s->dec, &settings) != EDGE264MVC_OK)
++        return AVERROR(ENOMEM);
++    s->pkt = av_packet_alloc();
++    if (!s->pkt)
++        return AVERROR(ENOMEM);
++    av_log(avctx, AV_LOG_VERBOSE, "edge264-mvc %s\n", edge264mvc_version());
++    return 0;
++}
++
++static av_cold int libedge264mvc_close(AVCodecContext *avctx)
++{
++    Libedge264MvcContext *s = avctx->priv_data;
++
++    edge264mvc_close(&s->dec);
++    av_packet_free(&s->pkt);
++    return 0;
++}
++
++static av_cold void libedge264mvc_flush(AVCodecContext *avctx)
++{
++    Libedge264MvcContext *s = avctx->priv_data;
++
++    edge264mvc_flush(s->dec);
++    av_packet_unref(s->pkt);
++    s->pkt_pos = 0;
++    s->ended = 0;
++}
++
++static int output_frame(AVCodecContext *avctx, const Edge264MvcFrame *f, AVFrame *frame)
++{
++    const Edge264MvcView *left = &f->views[0];
++    const Edge264MvcView *right = f->views[1].planes[0] ? &f->views[1] : left;
++    AVStereo3D *stereo;
++    int ret;
++
++    if (f->bit_depth_Y != 8 || f->bit_depth_C != 8 || f->width_C * 2 != f->width_Y ||
++        f->height_C * 2 != f->height_Y) {
++        avpriv_report_missing_feature(avctx, "Frames other than 8-bit 4:2:0");
++        return AVERROR_PATCHWELCOME;
++    }
++    ret = ff_set_dimensions(avctx, f->width_Y * 2, f->height_Y);
++    if (ret < 0)
++        return ret;
++    avctx->pix_fmt = AV_PIX_FMT_YUV420P;
++    ret = ff_get_buffer(avctx, frame, 0);
++    if (ret < 0)
++        return ret;
++
++    for (int p = 0; p < 3; p++) {
++        const int w = p ? f->width_C : f->width_Y;
++        const int h = p ? f->height_C : f->height_Y;
++        const int stride = p ? f->stride_C : f->stride_Y;
++        av_image_copy_plane(frame->data[p], frame->linesize[p],
++                            left->planes[p], stride, w, h);
++        av_image_copy_plane(frame->data[p] + w, frame->linesize[p],
++                            right->planes[p], stride, w, h);
++    }
++
++    frame->pts = left->pts;
++    frame->pkt_dts = AV_NOPTS_VALUE;
++    if (left->flags & EDGE264MVC_VIEW_IDR)
++        frame->flags |= AV_FRAME_FLAG_KEY;
++    if ((left->flags | right->flags) & EDGE264MVC_VIEW_CONCEALED)
++        frame->flags |= AV_FRAME_FLAG_CORRUPT;
++    if (right != left) {
++        stereo = av_stereo3d_create_side_data(frame);
++        if (!stereo)
++            return AVERROR(ENOMEM);
++        stereo->type = AV_STEREO3D_SIDEBYSIDE;
++    }
++    return 0;
++}
++
++// Sends the NAL units of the current packet. Returns 0 when all are sent,
++// AVERROR(EAGAIN) when the decoder is full (receive, then call again).
++static int send_packet(AVCodecContext *avctx)
++{
++    Libedge264MvcContext *s = avctx->priv_data;
++    const uint8_t *buf = s->pkt->data;
++    const int size = s->pkt->size;
++
++    while (s->pkt_pos < size) {
++        size_t start = s->pkt_pos + edge264mvc_find_start_code(buf + s->pkt_pos, size - s->pkt_pos);
++        size_t nal, end;
++        int ret;
++
++        if (start >= size)
++            break;
++        nal = start + 3;
++        end = nal + edge264mvc_find_start_code(buf + nal, size - nal);
++        // a 4-byte start code's leading zero, and trailing zeros, aren't payload
++        while (end > nal && end < size && !buf[end - 1])
++            end--;
++        ret = edge264mvc_send_nal(s->dec, buf + nal, end - nal, s->pkt->pts, 0);
++        if (ret == EDGE264MVC_AGAIN)
++            return AVERROR(EAGAIN);
++        if (ret == EDGE264MVC_NOMEM)
++            return AVERROR(ENOMEM);
++        if (ret == EDGE264MVC_INVALID)
++            return AVERROR_BUG;
++        // UNSUPPORTED (e.g. the type-24 NALs of 3D Blu-rays) and CORRUPT are skipped
++        s->pkt_pos = end;
++    }
++    av_packet_unref(s->pkt);
++    s->pkt_pos = 0;
++    return 0;
++}
++
++static int libedge264mvc_receive_frame(AVCodecContext *avctx, AVFrame *frame)
++{
++    Libedge264MvcContext *s = avctx->priv_data;
++
++    for (;;) {
++        Edge264MvcFrame f;
++        int ret = edge264mvc_receive_frame(s->dec, &f);
++
++        if (ret == EDGE264MVC_OK) {
++            ret = output_frame(avctx, &f, frame);
++            edge264mvc_release_frame(s->dec, &f);
++            return ret;
++        }
++        if (ret == EDGE264MVC_END)
++            return AVERROR_EOF;
++        if (ret != EDGE264MVC_AGAIN)
++            return AVERROR_BUG;
++
++        if (s->pkt->data) {
++            ret = send_packet(avctx);
++            if (ret == AVERROR(EAGAIN))
++                continue; // receiving now waits for a frame
++            if (ret < 0)
++                return ret;
++            continue;
++        }
++        if (s->ended)
++            return AVERROR_EOF;
++        ret = ff_decode_get_packet(avctx, s->pkt);
++        if (ret == AVERROR_EOF) {
++            edge264mvc_send_end(s->dec);
++            s->ended = 1;
++            continue;
++        }
++        if (ret < 0)
++            return ret;
++        s->pkt_pos = 0;
++    }
++}
++
++#define OFFSET(x) offsetof(Libedge264MvcContext, x)
++#define VD AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM
++static const AVOption libedge264mvc_options[] = {
++    { "edge264mvc_threads", "Worker threads (0: the codec context's thread count; 1: decode on the calling thread)",
++      OFFSET(threads), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 128, VD },
++    { NULL }
++};
++
++static const AVClass libedge264mvc_class = {
++    .class_name = "libedge264mvc decoder",
++    .item_name  = av_default_item_name,
++    .option     = libedge264mvc_options,
++    .version    = LIBAVUTIL_VERSION_INT,
++};
++
++const FFCodec ff_libedge264mvc_decoder = {
++    .p.name         = "libedge264mvc",
++    CODEC_LONG_NAME("edge264-mvc H.264 / MVC 3D (side-by-side output)"),
++    .p.type         = AVMEDIA_TYPE_VIDEO,
++    .p.id           = AV_CODEC_ID_H264,
++    .priv_data_size = sizeof(Libedge264MvcContext),
++    .init           = libedge264mvc_init,
++    .close          = libedge264mvc_close,
++    .flush          = libedge264mvc_flush,
++    FF_CODEC_RECEIVE_FRAME_CB(libedge264mvc_receive_frame),
++    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
++    .caps_internal  = FF_CODEC_CAP_SETS_FRAME_PROPS | FF_CODEC_CAP_AUTO_THREADS,
++    .p.priv_class   = &libedge264mvc_class,
++    .p.wrapper_name = "libedge264mvc",
++};
+-- 
+2.56.0
+

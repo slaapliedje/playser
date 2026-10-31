@@ -144,6 +144,20 @@ modules:
         url: https://www.makemkv.com/download/makemkv-bin-2.0.0.tar.gz
         sha256: f1265e74875a186efdfbbbec7459a64e969033515e53cbc4d805f0a374f0a124
 
+  # 3D Blu-ray: decodes H.264 MVC (both eyes) for FFmpeg's libedge264mvc
+  # decoder (our patch). BSD-3-Clause. Built for any x86-64, with SSE4/AVX2/
+  # AVX-512 code picked at run time.
+  - name: edge264mvc
+    buildsystem: simple
+    build-commands:
+      # install relinks the library, so it needs the same settings
+      - make -j${FLATPAK_BUILDER_N_JOBS} CFLAGS="-march=x86-64 -mtune=generic" VARIANTS=x86-64-v2,x86-64-v3,x86-64-v4 BUILDTEST=no PREFIX=/app install
+      - install -Dp -m 644 LICENSE_BSD.txt /app/share/licenses/playser/EDGE264MVC-LICENSE
+    sources:
+      - type: git
+        url: https://github.com/jens-duttke/edge264-mvc.git
+        commit: 4555276ce692ee8abdb8f768d4e59f82b1f6590e
+
   - name: ffmpeg
     cleanup:
       - /bin
@@ -168,11 +182,15 @@ modules:
       - --enable-vaapi
       - --enable-vulkan
       - --enable-libbluray
+      - --enable-libedge264mvc       # 3D Blu-ray (patch below)
     sources:
       - type: git
         url: https://github.com/FFmpeg/FFmpeg.git
         tag: n9.0.2
         commit: 946fcce07b6dcd0331c8cc609192aeff5e1924f8
+      # libedge264mvc: both eyes of a 3D Blu-ray as one side-by-side frame
+      - type: patch
+        path: patches/ffmpeg-libedge264mvc.patch
 
   - name: libplacebo
     buildsystem: meson
