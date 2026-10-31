@@ -25,7 +25,18 @@ FocusScope {
     // --play-menu: a disc, image or folder through its menus
     function playMenu(path) {
         setup.visible = false
+        system.stopUhdChecks() // MakeMKV needs the drive to itself, as for Play
         player.playMenu({ device: path, label: path.split("/").pop() })
+    }
+
+    // --play-playlists: a Blu-ray's playlists as episodes ("/dev/sr0:12,10")
+    function playPlaylists(arg) {
+        setup.visible = false
+        system.stopUhdChecks()
+        const i = arg.lastIndexOf(":")
+        const path = arg.slice(0, i)
+        player.play({ device: path, kind: "bluray", label: path.split("/").pop() },
+                    arg.slice(i + 1).split(",").map(n => ({ url: "bd://mpls/" + n, title: "Playlist " + n })))
     }
 
     // scale the 10-foot UI from a 1080p design size

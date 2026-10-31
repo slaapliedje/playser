@@ -11,6 +11,10 @@
 #include <QTimer>
 #include <clocale>
 #include <csignal>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <dirent.h>
 #include <unistd.h>
 
 #include "Gamepad.h"
@@ -42,6 +46,41 @@ static void quitOnSignals(QGuiApplication *app)
     sa.sa_flags = SA_RESTART;
     sigaction(SIGTERM, &sa, nullptr);
     sigaction(SIGINT, &sa, nullptr);
+}
+
+// libmmbd runs MakeMKV's helper (makemkvcon guiserver) as our child and
+// ends it when the disc is closed; but a disc still opening at exit (a hung
+// or slow drive) leaves it running, orphaned and holding the drive until it
+// is killed. End our own helpers on the way out (not anyone else's, e.g.
+// the MakeMKV app's).
+static void endHelpers()
+{
+    DIR *proc = opendir("/proc");
+    if (!proc)
+        return;
+    const pid_t self = getpid();
+    while (const dirent *e = readdir(proc)) {
+        const pid_t pid = atoi(e->d_name);
+        if (pid <= 0)
+            continue;
+        char path[64], stat[512] = {};
+        snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+        FILE *f = fopen(path, "r");
+        if (!f)
+            continue;
+        const size_t n = fread(stat, 1, sizeof(stat) - 1, f);
+        fclose(f);
+        // "pid (comm) state ppid ..."; comm may hold spaces, so from the last ')'
+        const char *close = n ? strrchr(stat, ')') : nullptr;
+        char state;
+        int ppid;
+        if (close && !strncmp(stat + strcspn(stat, "(") + 1, "makemkvcon)", 11)
+            && sscanf(close + 1, " %c %d", &state, &ppid) == 2 && ppid == self) {
+            qInfo("ending MakeMKV helper %d", pid);
+            kill(pid, SIGTERM);
+        }
+    }
+    closedir(proc);
 }
 
 // MakeMKV's libmmbd stands in for libaacs/libbdplus (docs/spike-results.md,
@@ -156,6 +195,8 @@ int main(int argc, char *argv[])
         { "shot-dir", "Directory for script screenshots.", "dir", "." },
         { "play", "Play a file or URL directly (testing without a drive).", "url" },
         { "play-menu", "Play a DVD image or folder through its menus (testing).", "path" },
+        { "play-playlists", "Play a Blu-ray's playlists in turn as episodes, e.g. /dev/sr0:12,10 (testing).",
+          "device:list" },
         { "mpv-option", "Set an mpv option, e.g. audio-spdif=ac3 (testing).", "name=value" },
     });
     args.process(app);
@@ -185,6 +226,8 @@ int main(int argc, char *argv[])
         QMetaObject::invokeMethod(rootItem, "playUrl", QVariant(args.value("play")));
     if (args.isSet("play-menu"))
         QMetaObject::invokeMethod(rootItem, "playMenu", QVariant(args.value("play-menu")));
+    if (args.isSet("play-playlists"))
+        QMetaObject::invokeMethod(rootItem, "playPlaylists", QVariant(args.value("play-playlists")));
 
     QObject::connect(&gamepad, &Gamepad::keyPressed, &ui, &UiRenderer::deliverKey);
     gamepad.start();
@@ -196,5 +239,6 @@ int main(int argc, char *argv[])
     QMetaObject::invokeMethod(rootItem, "shutdown");
     gamepad.requestInterruption();
     gamepad.wait();
+    endHelpers();
     return ret;
 }

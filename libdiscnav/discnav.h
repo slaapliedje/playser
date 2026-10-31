@@ -55,6 +55,16 @@ typedef void (*discnav_log_fn)(void *user, int level, const char *message);
  * the UI thread. */
 discnav_t *discnav_open(const char *device, const char *lang,
                         discnav_event_fn on_event, discnav_log_fn on_log, void *user);
+/* Opens a Blu-ray without its menus and plays these playlists in turn
+ * (00042.mpls is 42; e.g. a series' episodes), from `seconds` into
+ * playlists[first]: one open for all of them, no AACS handshake between
+ * titles. Each playlist is a title (discnav_get_position's title is its
+ * 1-based place in the list); DISCNAV_EVENT_STOP after the last. Chapter
+ * skips go on to the next or previous playlist at either end. NULL on
+ * failure (or a DVD). */
+discnav_t *discnav_open_playlists(const char *device, const char *lang, const int *playlists, int count,
+                                  int first, double seconds,
+                                  discnav_event_fn on_event, discnav_log_fn on_log, void *user);
 void discnav_close(discnav_t *nav);
 
 discnav_format_t discnav_format(discnav_t *nav);

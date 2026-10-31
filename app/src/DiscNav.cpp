@@ -8,6 +8,7 @@
 #include <mpv/stream_cb.h>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 #include <discnav.h>
 
@@ -196,7 +197,26 @@ QString DiscNav::format() const
 
 void DiscNav::open(const QString &device)
 {
+    start(true, [path = QFile::encodeName(device)](NavContext *ctx) {
+        return discnav_open(path.constData(), "en", onEvent, onLog, ctx);
+    });
+}
+
+void DiscNav::openPlaylists(const QString &device, const QVariantList &playlists, int first, double seconds)
+{
+    std::vector<int> list;
+    for (const QVariant &v : playlists)
+        list.push_back(v.toInt());
+    start(false, [path = QFile::encodeName(device), list, first, seconds](NavContext *ctx) {
+        return discnav_open_playlists(path.constData(), "en", list.data(), int(list.size()), first, seconds,
+                                      onEvent, onLog, ctx);
+    });
+}
+
+void DiscNav::start(bool menus, std::function<discnav_t *(NavContext *)> openFn)
+{
     close();
+    m_menus = menus;
     if (!m_mpv) {
         emit openFailed();
         return;
@@ -204,8 +224,8 @@ void DiscNav::open(const QString &device)
     const unsigned generation = ++m_generation;
     auto *ctx = new NavContext;
     // a Blu-ray's open takes seconds (AACS, BD-J's JVM): off the UI thread
-    std::thread([this, ctx, generation, path = QFile::encodeName(device)] {
-        ctx->nav = discnav_open(path.constData(), "en", onEvent, onLog, ctx);
+    std::thread([this, ctx, generation, openFn = std::move(openFn)] {
+        ctx->nav = openFn(ctx);
         QMetaObject::invokeMethod(this, [this, ctx, generation] { opened(ctx, generation); }, Qt::QueuedConnection);
     }).detach();
 }
@@ -263,6 +283,10 @@ void DiscNav::close()
     if (m_inMenu) {
         m_inMenu = false;
         emit inMenuChanged();
+    }
+    if (m_title) {
+        m_title = 0;
+        emit titleChanged();
     }
     emit activeChanged();
 }
@@ -437,6 +461,14 @@ void DiscNav::applyTracks()
     if (t.in_menu != m_inMenu) {
         m_inMenu = t.in_menu;
         emit inMenuChanged();
+    }
+    int title = 0;
+    double seconds;
+    if (!discnav_get_position(m_ctx->nav, &title, &seconds, nullptr))
+        title = 0;
+    if (title != m_title) {
+        m_title = title;
+        emit titleChanged();
     }
     emit streamsChanged();
     const auto find = [this](const char *type, int srcId) -> qint64 {

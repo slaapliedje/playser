@@ -41,6 +41,9 @@ extern const nav_backend_t dvd_backend;
 
 nav_impl_t *bd_nav_open(const char *device, const char *lang,
                         discnav_event_fn on_event, discnav_log_fn on_log, void *user);
+nav_impl_t *bd_playlists_open(const char *device, const char *lang, const int *playlists, int count,
+                              int first, double seconds,
+                              discnav_event_fn on_event, discnav_log_fn on_log, void *user);
 extern const nav_backend_t bd_backend;
 
 #endif

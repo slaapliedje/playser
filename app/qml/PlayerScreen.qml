@@ -5,9 +5,11 @@ FocusScope {
     id: root
 
     required property Mpv mpv
-    // plays a disc through its menus (playMenu)
+    // plays a disc through its menus (playMenu), or a Blu-ray's episodes
+    // on one open of the disc (play)
     property DiscNav nav
     readonly property bool navigating: !!nav && nav.active
+    readonly property bool discMenus: navigating && nav.menus
     property bool active: false
     property var drive: null
     // what plays, in order: [{ url, title }] (several for a series' episodes);
@@ -21,6 +23,8 @@ FocusScope {
         : drive.disc && drive.disc.title ? drive.disc.title : Theme.titleFromLabel(drive.label)
     // the episode's title for a series, or the extra's; else empty
     readonly property string entryTitle: queue.length > 1 || entry.extra ? (entry.title || "") : ""
+    // where play() started the queue, for falling back to mpv
+    property real queueStart: 0
     // from play() until mpv has opened the title; a UHD takes ~20 s
     property bool opening: false
     // wasExtra: it played one of the disc's extras
@@ -32,7 +36,20 @@ FocusScope {
         queue = q || [{ url: d.url, title: displayTitle }]
         active = true
         forceActiveFocus()
-        loadEntry(i || 0, start || 0)
+        // a Blu-ray's episodes play on one open of the disc (each open
+        // would redo AACS, seconds to a minute); mpv opens anything else
+        const playlists = d.kind === "bluray" && queue.length > 1 ? queue.map(e => {
+            const m = /^bd:\/\/mpls\/(\d+)$/.exec(e.url || "")
+            return m ? parseInt(m[1]) : -1
+        }) : []
+        if (playlists.length && playlists.every(p => p >= 0)) {
+            index = i || 0
+            queueStart = start || 0
+            opening = true
+            nav.openPlaylists(d.device, playlists, index, start || 0)
+        } else {
+            loadEntry(i || 0, start || 0)
+        }
     }
 
     // the disc from its start, menus and all (DVD, Blu-ray), read from path
@@ -66,7 +83,12 @@ FocusScope {
     function saveResume() {
         if (opening || entry.extra)
             return
-        if (navigating) {
+        if (navigating && !nav.menus) {
+            const p = nav.position()
+            if (p.title)
+                Resume.save(resumeKey, { index: index, position: Math.floor(p.seconds), url: entry.url,
+                                         title: entry.title || "" })
+        } else if (navigating) {
             const p = nav.position() // nothing to save in a menu
             if (p.title) {
                 const url = nav.format === "bluray" ? "bd://mpls/" + p.playlist
@@ -145,12 +167,31 @@ FocusScope {
 
     Connections {
         target: root.nav
-        function onStopped() { if (root.active) root.close() }
+        function onStopped() {
+            if (!root.active)
+                return
+            if (!root.nav.menus && root.index === root.queue.length - 1) {
+                Resume.clear(root.resumeKey) // watched to the end
+                root.opening = true // keep close() from saving the final position
+            }
+            root.close()
+        }
+        // episodes on one open of the disc: which one plays
+        function onTitleChanged() {
+            if (root.active && !root.nav.menus && root.nav.title > 0) {
+                root.index = root.nav.title - 1
+                root.showOsd()
+            }
+        }
         // the menus didn't start (e.g. a BD-J disc the menus can't run):
         // play the film the usual way if there's one
         function onOpenFailed() {
             if (!root.active)
                 return
+            if (!root.nav.menus) { // episodes: one at a time through mpv
+                root.loadEntry(root.index, root.queueStart)
+                return
+            }
             const d = root.drive
             if (d && d.url) {
                 root.play(d)
@@ -213,6 +254,8 @@ FocusScope {
             case Qt.Key_PageDown: nav.action("next"); showOsd(); return true
             }
         }
+        if (!nav.menus)
+            return false // episodes without menus: Start is the track picker, as ever
         const bluray = nav.format === "bluray"
         switch (key) { // leaving a title: keep its position first
         case Qt.Key_Menu: saveResume(); nav.action(bluray ? "popup" : "menu"); return true
@@ -381,7 +424,7 @@ FocusScope {
 
             HintBar {
                 textSize: Theme.fontSmall * 0.85
-                hints: root.navigating ? [
+                hints: root.discMenus ? [
                     { buttons: ["south"], text: root.mpv.paused ? "Play" : "Pause" },
                     { buttons: ["dpadH"], text: "Seek" },
                     { buttons: ["lb", "rb"], text: "Chapter" },

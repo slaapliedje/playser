@@ -23,6 +23,9 @@
  * - "In a menu" (the d-pad goes to the disc): the top menu, First Play,
  *   or graphics on screen (a pop-up menu over the film). BD-J discs keep
  *   BD_EVENT_MENU on through their titles, so it only counts for HDMV.
+ * - Without menus (discnav_open_playlists) the disc isn't started:
+ *   bd_select_playlist() plays each playlist of the queue in turn, the
+ *   next on END_OF_TITLE, one segment each, on the one open disc.
  */
 #define _GNU_SOURCE
 #include "internal.h"
@@ -70,6 +73,9 @@ struct nav_impl {
     int want_aid, want_sid;
     uint64_t still_until;       /* a timed still ends (ms), 0: none */
     bool title_ended;           /* END_OF_TITLE seen, nothing read since */
+    int *queue;                 /* without menus: the playlists to play */
+    int queue_len, queue_pos;
+    bool restart;               /* a queued playlist started: new segment */
 
     pthread_mutex_t olock;      /* guards the planes; never taken with lock wanted */
     BD_ARGB_BUFFER argb;        /* libbluray draws into argb.buf[plane] */
@@ -370,6 +376,27 @@ static void load_playlist(nav_impl_t *nav, int playlist)
     nav->playitem = 0;
 }
 
+/* Without menus: plays queue[pos] from `seconds` (lock held, or opening). */
+static bool start_playlist(nav_impl_t *nav, int pos, double seconds)
+{
+    int playlist = nav->queue[pos];
+    if (!bd_select_playlist(nav->bd, (uint32_t)playlist)) {
+        logf_(nav, 0, "can't play %05d.mpls", playlist);
+        return false;
+    }
+    load_playlist(nav, playlist);
+    nav->queue_pos = pos;
+    nav->title_num = (unsigned)pos + 1;
+    nav->chapter = 1;
+    if (seconds > 0)
+        bd_seek_time(nav->bd, (uint64_t)(seconds * 90000));
+    nav->restart = true;
+    logf_(nav, 0, "playlist %05d.mpls (%d of %d)", playlist, pos + 1, nav->queue_len);
+    nav->want_aid = -2; /* another title: tell the player even if the PIDs match */
+    update_tracks(nav);
+    return true;
+}
+
 /* ---------- the stream ---------- */
 
 /* Waits a little for time to pass or the user to act (lock held). */
@@ -405,11 +432,15 @@ static bool handle_event(nav_impl_t *nav, nav_stream_t *s, const BD_EVENT *ev, b
         logf_(nav, 0, "read error");
         return false;
     case BD_EVENT_TITLE:
+        if (nav->queue)
+            return false; /* the queue numbers its titles (start_playlist) */
         logf_(nav, 1, "title %u", ev->param);
         nav->title_num = ev->param;
         update_tracks(nav);
         return false;
     case BD_EVENT_PLAYLIST:
+        if (nav->queue)
+            return false; /* start_playlist() chose it and ends the segment */
         logf_(nav, 1, "playlist %05u.mpls%s", ev->param, s->got_data ? ": end of segment" : "");
         load_playlist(nav, (int)ev->param);
         update_tracks(nav);
@@ -429,6 +460,14 @@ static bool handle_event(nav_impl_t *nav, nav_stream_t *s, const BD_EVENT *ev, b
               s->got_data ? ": end of segment" : "");
         return true;
     case BD_EVENT_END_OF_TITLE:
+        if (nav->queue) {
+            if (nav->queue_pos + 1 < nav->queue_len && start_playlist(nav, nav->queue_pos + 1, 0))
+                return false; /* the restart ends the segment */
+            logf_(nav, 0, "end of the queue");
+            nav->stopped = true;
+            emit(nav, DISCNAV_EVENT_STOP);
+            return true;
+        }
         /* repeated on every read until the disc moves on (BD-J decides) */
         if (!nav->title_ended)
             logf_(nav, 1, "end of title");
@@ -439,7 +478,12 @@ static bool handle_event(nav_impl_t *nav, nav_stream_t *s, const BD_EVENT *ev, b
         logf_(nav, 1, "still %s", ev->param ? "on" : "off");
         return false;
     case BD_EVENT_STILL_TIME:
-        /* repeated on every read while the still lasts */
+        /* repeated on every read while the still lasts; without menus
+         * nothing would end an infinite one */
+        if (!ev->param && nav->queue) {
+            bd_read_skip_still(nav->bd);
+            return false;
+        }
         if (ev->param && !nav->still_until)
             nav->still_until = now_ms() + ev->param * 1000u;
         if (nav->still_until && now_ms() >= nav->still_until) {
@@ -490,6 +534,17 @@ static int next_unit(nav_stream_t *s)
     for (;;) {
         if (s->cancel) { ret = -1; break; }
         if (s->eof) { ret = 0; break; }
+        if (nav->restart && s->got_data) {
+            /* the next playlist of the queue starts in a segment of its own */
+            if (nav->user_jump)
+                emit(nav, DISCNAV_EVENT_FLUSH);
+            nav->user_jump = false;
+            nav->restart = false;
+            s->eof = true;
+            ret = 0;
+            break;
+        }
+        nav->restart = false;
         BD_EVENT ev;
         int n = bd_read_ext(nav->bd, s->buf, UNIT, &ev);
         bool end = false, wait = false;
@@ -613,11 +668,17 @@ static bool bdn_action(nav_impl_t *nav, discnav_action_t a)
         ok = nav->title_num != 0 && nav->title_num != 0xffff && graphics_shown(nav) && key(nav, BD_VK_POPUP);
         break;
     case DISCNAV_PREV_CHAPTER:
-        ok = nav->chapter > 1 && bd_seek_chapter(nav->bd, (unsigned)nav->chapter - 2) >= 0;
+        /* without menus, past the first chapter goes to the previous title */
+        if (nav->chapter > 1)
+            ok = bd_seek_chapter(nav->bd, (unsigned)nav->chapter - 2) >= 0;
+        else if (nav->queue && nav->queue_pos > 0)
+            ok = start_playlist(nav, nav->queue_pos - 1, 0);
         break;
     case DISCNAV_NEXT_CHAPTER:
-        ok = nav->info && (unsigned)nav->chapter < nav->info->chapter_count &&
-             bd_seek_chapter(nav->bd, (unsigned)nav->chapter) >= 0;
+        if (nav->info && (unsigned)nav->chapter < nav->info->chapter_count)
+            ok = bd_seek_chapter(nav->bd, (unsigned)nav->chapter) >= 0;
+        else if (nav->queue && nav->queue_pos + 1 < nav->queue_len)
+            ok = start_playlist(nav, nav->queue_pos + 1, 0);
         break;
     }
     logf_(nav, 1, "user: %s%s", (unsigned)a < sizeof(names) / sizeof(names[0]) ? names[a] : "?",
@@ -826,8 +887,9 @@ static const char *lang3(const char *lang)
 
 static void bdn_close(nav_impl_t *nav);
 
-nav_impl_t *bd_nav_open(const char *device, const char *lang,
-                        discnav_event_fn on_event, discnav_log_fn on_log, void *user)
+/* Opens the disc and sets the player up; menus: its menus will run. */
+static nav_impl_t *open_disc(const char *device, const char *lang, bool menus,
+                             discnav_event_fn on_event, discnav_log_fn on_log, void *user)
 {
     nav_impl_t *nav = calloc(1, sizeof(*nav));
     if (!nav)
@@ -855,13 +917,13 @@ nav_impl_t *bd_nav_open(const char *device, const char *lang,
         bdn_close(nav);
         return NULL;
     }
-    if (di->bdj_detected && !di->bdj_handled) {
+    if (menus && di->bdj_detected && !di->bdj_handled) {
         logf_(nav, 0, "%s has BD-J menus, but %s", device,
               di->libjvm_detected ? "libbluray's BD-J jar is missing" : "there is no usable Java (21)");
         bdn_close(nav);
         return NULL;
     }
-    nav->bdj = di->bdj_detected;
+    nav->bdj = menus && di->bdj_detected;
     const char *l = lang3(lang);
     bd_set_player_setting_str(nav->bd, BLURAY_PLAYER_SETTING_MENU_LANG, l);
     bd_set_player_setting_str(nav->bd, BLURAY_PLAYER_SETTING_AUDIO_LANG, l);
@@ -873,10 +935,40 @@ nav_impl_t *bd_nav_open(const char *device, const char *lang,
 
     const char *name = di->disc_name ? di->disc_name : di->udf_volume_id;
     snprintf(nav->title, sizeof(nav->title), "%s", name ? name : "");
-    logf_(nav, 0, "opened %s \"%s\" (%s menus%s)", device, nav->title, di->bdj_detected ? "BD-J" : "HDMV",
-          di->aacs_detected ? ", AACS" : "");
-    if (!bd_play(nav->bd)) {
+    logf_(nav, 0, "opened %s \"%s\" (%s%s)", device, nav->title,
+          !menus ? "no menus" : di->bdj_detected ? "BD-J menus" : "HDMV menus", di->aacs_detected ? ", AACS" : "");
+    return nav;
+}
+
+nav_impl_t *bd_nav_open(const char *device, const char *lang,
+                        discnav_event_fn on_event, discnav_log_fn on_log, void *user)
+{
+    nav_impl_t *nav = open_disc(device, lang, true, on_event, on_log, user);
+    if (nav && !bd_play(nav->bd)) {
         logf_(nav, 0, "the disc doesn't start");
+        bdn_close(nav);
+        return NULL;
+    }
+    return nav;
+}
+
+nav_impl_t *bd_playlists_open(const char *device, const char *lang, const int *playlists, int count,
+                              int first, double seconds,
+                              discnav_event_fn on_event, discnav_log_fn on_log, void *user)
+{
+    if (count < 1 || first < 0 || first >= count)
+        return NULL;
+    nav_impl_t *nav = open_disc(device, lang, false, on_event, on_log, user);
+    if (!nav)
+        return NULL;
+    nav->in_menu = false;
+    nav->queue = malloc(sizeof(int) * count);
+    if (nav->queue) {
+        memcpy(nav->queue, playlists, sizeof(int) * count);
+        nav->queue_len = count;
+    }
+    bd_get_event(nav->bd, NULL); /* events (streams, chapters) without bd_play() */
+    if (!nav->queue || !start_playlist(nav, first, seconds)) {
         bdn_close(nav);
         return NULL;
     }
@@ -891,6 +983,7 @@ static void bdn_close(nav_impl_t *nav)
         bd_close(nav->bd);
     if (nav->info)
         bd_free_title_info(nav->info);
+    free(nav->queue);
     for (int p = 0; p < PLANES; p++) {
         free(nav->argb.buf[p]);
         free(nav->front[p]);

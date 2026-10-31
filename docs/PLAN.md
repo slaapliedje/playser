@@ -461,6 +461,15 @@ Status (2026-10-30):
 - ✅ Resume through Blu-ray menus: a film started from the disc's menu
   saves its playlist (`bd://mpls/N`) and resumes there without the menus
   (Legend: stopped at 1:52, resumed at 1:52).
+- 🔶 Play all on one open of the disc: `discnav_open_playlists()` plays a
+  queue of playlists without menus (`bd_select_playlist`, the next on
+  END_OF_TITLE, infinite stills skipped); the app uses it for a Blu-ray's
+  episodes (fallback: one mpv open each). Library tested on Legend (two
+  extras back to back); the app path waits for the desktop drive, which
+  stopped answering libmmbd's AACS commands. Test disc: Looney Tunes
+  Collector's Choice (HDMV, a playlist per cartoon).
+- ✅ MakeMKV's helper (makemkvcon guiserver) no longer outlives the app
+  when a disc is still opening at exit (quit or SIGTERM).
 - ⬜ Not yet: Play all without reopening the disc (the
   original reason for navigation mode), the background graphics plane,
   menu sound effects.

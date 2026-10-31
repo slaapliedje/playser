@@ -4,11 +4,13 @@
 #include <QObject>
 #include <QPointer>
 #include <QtQml/qqmlregistration.h>
+#include <functional>
 
 #include "Mpv.h"
 #include "OverlayEncoder.h"
 
 struct NavContext;
+struct discnav;
 
 // Disc menus (DVD, Blu-ray): libdiscnav runs the disc's VM and feeds mpv through a
 // "discnav://" stream_cb protocol, one mpv file per segment; this reloads
@@ -27,6 +29,12 @@ class DiscNav : public QObject
     Q_PROPERTY(bool inMenu READ inMenu NOTIFY inMenuChanged)
     // "dvd" or "bluray" once open, else ""
     Q_PROPERTY(QString format READ format NOTIFY activeChanged)
+    // the disc's menus run (open()), rather than a list of titles
+    // (openPlaylists()); kept after close
+    Q_PROPERTY(bool menus READ menus NOTIFY activeChanged)
+    // the title playing (1-based; openPlaylists(): its place in the list),
+    // 0 in a menu
+    Q_PROPERTY(int title READ title NOTIFY titleChanged)
     // the title's streams as the disc describes them, for the track picker:
     // [{ id (for selectStream), label, selected }]; empty in a menu
     Q_PROPERTY(QVariantList audioStreams READ audioStreams NOTIFY streamsChanged)
@@ -40,6 +48,8 @@ public:
     void setMpv(Mpv *mpv);
     bool active() const { return m_ctx != nullptr; }
     bool inMenu() const { return m_inMenu; }
+    bool menus() const { return m_menus; }
+    int title() const { return m_title; }
     QString format() const;
     QVariantList audioStreams() const;
     QVariantList subtitleStreams() const;
@@ -49,6 +59,11 @@ public:
     // runs in the background (a Blu-ray takes seconds): active turns true
     // when it's open, openFailed() if it can't be.
     Q_INVOKABLE void open(const QString &device);
+    // Plays a Blu-ray's playlists in turn without its menus (e.g. a
+    // series' episodes: [42, 43] for 00042.mpls, 00043.mpls), from
+    // `seconds` into playlists[first], on one open of the disc. As open():
+    // active, openFailed(); stopped() after the last.
+    Q_INVOKABLE void openPlaylists(const QString &device, const QVariantList &playlists, int first, double seconds);
     // Stops playback and lets go of the disc.
     Q_INVOKABLE void close();
     // "up", "down", "left", "right", "activate", "menu" (root menu), "title"
@@ -69,6 +84,7 @@ signals:
     void mpvChanged();
     void activeChanged();
     void inMenuChanged();
+    void titleChanged();
     void streamsChanged();
     // the disc's programming ended, or it can't be read any more
     void stopped();
@@ -80,6 +96,7 @@ private slots:
     void onNavEvent(int event);
 
 private:
+    void start(bool menus, std::function<struct discnav *(NavContext *)> openFn);
     void opened(NavContext *ctx, unsigned generation);
     void load();
     void onFileLoaded();
@@ -92,6 +109,8 @@ private:
     NavContext *m_ctx = nullptr;
     unsigned m_generation = 0; // bumped by open() and close(): stale opens are dropped
     bool m_inMenu = false;
+    bool m_menus = true;
+    int m_title = 0;
     bool m_loadPending = false;
     int m_errors = 0;
     qint64 m_aid = -2, m_sid = -2; // last selected (-2: none yet, -1: off)

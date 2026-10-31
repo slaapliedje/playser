@@ -50,6 +50,21 @@ discnav_t *discnav_open(const char *device, const char *lang,
     return nav;
 }
 
+discnav_t *discnav_open_playlists(const char *device, const char *lang, const int *playlists, int count,
+                                  int first, double seconds,
+                                  discnav_event_fn on_event, discnav_log_fn on_log, void *user)
+{
+    discnav_t *nav = calloc(1, sizeof(*nav));
+    if (!nav)
+        return NULL;
+    nav->be = &bd_backend;
+    if (!(nav->impl = bd_playlists_open(device, lang, playlists, count, first, seconds, on_event, on_log, user))) {
+        free(nav);
+        return NULL;
+    }
+    return nav;
+}
+
 void discnav_close(discnav_t *nav)
 {
     if (!nav)
