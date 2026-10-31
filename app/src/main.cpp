@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
+#include <thread>
 #include <unistd.h>
 
 #include "Gamepad.h"
@@ -46,6 +47,9 @@ static void quitOnSignals(QGuiApplication *app)
     sa.sa_flags = SA_RESTART;
     sigaction(SIGTERM, &sa, nullptr);
     sigaction(SIGINT, &sa, nullptr);
+    // a helper ended at exit (endHelpers) while its disc was still opening:
+    // libmmbd's next write to it gets EPIPE instead of killing us
+    signal(SIGPIPE, SIG_IGN);
 }
 
 // libmmbd runs MakeMKV's helper (makemkvcon guiserver) as our child and
@@ -240,5 +244,13 @@ int main(int argc, char *argv[])
     gamepad.requestInterruption();
     gamepad.wait();
     endHelpers();
+    // mpv's teardown (~Mpv, after the UI and its settings) waits for a disc
+    // still opening, and libmmbd waits forever for the helper just ended:
+    // give teardown a few seconds, then leave without it
+    std::thread([ret] {
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        qWarning("exit: still tearing down after 5 s, leaving");
+        _exit(ret);
+    }).detach();
     return ret;
 }

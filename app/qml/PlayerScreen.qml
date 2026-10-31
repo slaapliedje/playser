@@ -319,10 +319,26 @@ FocusScope {
                 color: Theme.textDim
                 font.pixelSize: Theme.fontMedium
             }
+            // a disc with read errors takes the drive a minute of retries
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: slow.shown
+                text: "Still reading the disc. A dirty or scratched disc can take a minute."
+                color: Theme.textDim
+                font.pixelSize: Theme.fontSmall
+            }
             HintBar {
                 anchors.horizontalCenter: parent.horizontalCenter
                 hints: [{ buttons: ["east"], text: "Cancel" }]
             }
+        }
+        Timer {
+            id: slow
+            property bool shown: false
+            interval: 20000
+            running: root.opening
+            onRunningChanged: if (running) shown = false
+            onTriggered: shown = true
         }
         Timer {
             id: dots
