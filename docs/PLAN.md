@@ -167,7 +167,8 @@ Status (2026-10-28), `app/`:
     HDR10 clip: desktop SDR panel (21,27,39) exact; box HDR panel
     1.9/2.2/4.0 nits, text 173-187, amber 149/101/22 (expected 1.9/2.2/3.9,
     176-186, 149/103/21.5; the old path had amber red at 134).
-- ⬜ Real controller test (Steam Input on the box, Legion Go 2).
+- ✅ Real controller test (2026-10-31): the user's Steam Controller on the
+  box, through Steam Input.
 - ✅ "Opening disc…" screen while mpv opens the title; B cancels (the UI
   returns at once; libbluray's open can't be interrupted and ends ~13 s
   later, so end-file events are matched to the current playlist entry).
@@ -283,7 +284,8 @@ Status (2026-10-28), `app/`:
   a rejected packet is dropped, and before any output the muxer starts
   over on the next one. Verified on the box: same resume, passthrough held.
   Worth sending upstream.
-- ⬜ Add the dummy-stream blocker to the SteamOS issue.
+- ✅ SteamOS issue drafts (`docs/steamos-issues.md`): load `sg`; a comment
+  on #989 about the dummy stream and Steam's UI sounds. Filing is the user's.
 - ✅ **4K UHD drive check** (2026-10-29): `SystemCheck::checkUhdDrives()`
   runs `makemkvcon -r info dev:/dev/srN` when a disc goes in (not during
   playback) and when Setup opens. MakeMKV prints `MSG:1011 "Using LibreDrive
