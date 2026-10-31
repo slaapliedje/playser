@@ -71,6 +71,8 @@ struct nav_impl {
     int pg_num;
     bool pg_on;
     int want_aid, want_sid;
+    int logged_aid, logged_sid; /* as last logged (-2: not since the playlist started) */
+    bool logged_pg;
     uint64_t still_until;       /* a timed still ends (ms), 0: none */
     bool title_ended;           /* END_OF_TITLE seen, nothing read since */
     int *queue;                 /* without menus: the playlists to play */
@@ -358,8 +360,12 @@ static void update_tracks(nav_impl_t *nav)
         if (menu != nav->in_menu)
             logf_(nav, 0, "%s (title %u, menu %d, graphics %d)", menu ? "menu" : "title", nav->title_num, nav->menu,
                   graphics_shown(nav));
-        if (aid != nav->want_aid || sid != nav->want_sid)
+        if (aid != nav->logged_aid || sid != nav->logged_sid || nav->pg_on != nav->logged_pg) {
             logf_(nav, 0, "streams: audio 0x%x, subtitles 0x%x%s", aid, sid, nav->pg_on ? "" : " (forced only)");
+            nav->logged_aid = aid;
+            nav->logged_sid = sid;
+            nav->logged_pg = nav->pg_on;
+        }
         nav->want_aid = aid;
         nav->want_sid = sid;
         nav->in_menu = menu;
@@ -374,6 +380,7 @@ static void load_playlist(nav_impl_t *nav, int playlist)
     nav->info = bd_get_playlist_info(nav->bd, playlist, 0);
     nav->playlist = playlist;
     nav->playitem = 0;
+    nav->logged_aid = nav->logged_sid = -2;
 }
 
 /* Without menus: plays queue[pos] from `seconds` (lock held, or opening). */
@@ -906,6 +913,7 @@ static nav_impl_t *open_disc(const char *device, const char *lang, bool menus,
     nav->on_log = on_log;
     nav->user = user;
     nav->want_aid = nav->want_sid = -1;
+    nav->logged_aid = nav->logged_sid = -2;
     nav->title_num = 0xffff;
     nav->in_menu = true;
     nav->playitem = -1;
