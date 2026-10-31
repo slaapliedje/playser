@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Build a small synthetic NTSC DVD with menus, for exercising disc navigation.
 #
 #   VMGM menu   still (pause=inf), NO audio, 3 buttons:

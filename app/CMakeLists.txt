@@ -84,6 +84,12 @@ target_link_libraries(playser PRIVATE
 
 include(GNUInstallDirs)
 install(TARGETS playser RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+# GPL-3.0-or-later: the repo's COPYING (the Flatpak copies it next to app/'s files)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/COPYING)
+    install(FILES COPYING DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/playser)
+else()
+    install(FILES ../COPYING DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/playser)
+endif()
 install(FILES data/THEDISCDB-LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/playser)
 install(FILES data/fonts/INTER-LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/playser)
 install(FILES third_party/libudfread/COPYING DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/playser RENAME LIBUDFREAD-LICENSE)

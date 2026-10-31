@@ -243,3 +243,5 @@ modules:
     sources:
       - type: dir
         path: ../app
+      - type: file
+        path: ../COPYING

@@ -1,7 +1,8 @@
 # libdiscnav
 
 Disc menus for players that take a byte stream. LGPL-2.1-or-later (see
-`COPYING`).
+`COPYING`). It links libdvdnav and libdvdread, which are GPL-2.0-or-later,
+so a build of it is distributed under the GPL.
 
 DVD navigation on top of libdvdnav: the DVD VM runs inside libdiscnav and
 hands the disc out as a series of MPEG-PS byte streams ("segments"), which
@@ -9,7 +10,8 @@ a player opens as ordinary files, e.g. libmpv through a `stream_cb`
 protocol. Menu graphics (subpictures with the disc's palette and button
 highlights) are composited by libdiscnav for the player to draw as an
 overlay. It grew out of Playser's spike 0b (`docs/spike-results.md` in the
-Playser repository), whose lessons it keeps; Blu-ray navigation is planned.
+Playser repository), whose lessons it keeps. Blu-ray navigation (HDMV
+and BD-J) is on top of libbluray.
 
 ## Model
 

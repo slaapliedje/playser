@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "Gamepad.h"
 
 #include <SDL3/SDL.h>

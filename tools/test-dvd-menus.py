@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """DVD menu tests: drive the app through the synthetic test DVD.
 
     tools/test-dvd-menus.py [--app build/app/playser] [--keep DIR]

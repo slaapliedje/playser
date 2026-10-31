@@ -555,7 +555,8 @@ Steam, as a possible second channel (decide later; keep the door open now):
 - **Biggest risk is disc decryption, not AI.** A Steam build likely must ship
   without libdvdcss and rely only on a user-installed MakeMKV. Ask Valve
   before investing.
-- Licensing: the app will be GPL (libmpv as packaged is GPL). The Steamworks
+- Licensing: the app is GPL-3.0-or-later (`COPYING`; FFmpeg as built is
+  GPLv3, mpv and libdvdnav GPL); libdiscnav stays LGPL-2.1-or-later. The Steamworks
   SDK is proprietary, so keep Steam API use in an optional, separately
   loaded module (or a GPL linking exception) and never require it.
 - On Steam, the native Steam Input API (action sets, per-device glyphs)

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Build the app's offline disc index from TheDiscDB data (MIT licence).
 
     git clone --depth 1 --filter=blob:none --sparse \\
