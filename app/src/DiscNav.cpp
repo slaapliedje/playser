@@ -415,8 +415,12 @@ void DiscNav::load()
     const bool stereo = m_mpv->stereoDisplay() && discnav_has_stereo(m_ctx->nav);
     discnav_set_stereo(m_ctx->nav, stereo);
     m_mpv->setStereoVideo(stereo);
-    m_mpv->loadFile(QStringLiteral("discnav://"),
-                    discnav_format(m_ctx->nav) == DISCNAV_BLURAY ? kBdSegmentOptions : kDvdSegmentOptions);
+    QStringList options = discnav_format(m_ctx->nav) == DISCNAV_BLURAY ? kBdSegmentOptions : kDvdSegmentOptions;
+    // the dependent view is read in chunks of ~5 s of film, during which
+    // the stream waits about a second: read further ahead than that
+    if (stereo)
+        options.replaceInStrings(QStringLiteral("demuxer-readahead-secs=0.5"), QStringLiteral("demuxer-readahead-secs=4"));
+    m_mpv->loadFile(QStringLiteral("discnav://"), options);
 }
 
 void DiscNav::onNavEvent(int event)

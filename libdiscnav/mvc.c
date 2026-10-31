@@ -34,8 +34,18 @@
 #define DEP_PID 0x1012
 #define CHUNK (8 << 20)        /* dependent clip read ahead, ~5 s of a film */
 #define LOCKED_UNITS 170       /* units read per lock taken (~1 MB) */
-#define MAX_QUEUE 256
+#define MAX_QUEUE 8192          /* a chunk of a still scene holds hundreds */
 #define TS_SECOND 90000
+
+/* DISCNAV_MVC_DEBUG=1: the merge's decisions on stderr */
+static bool debug_on(void)
+{
+    static int on = -1;
+    if (on < 0)
+        on = getenv("DISCNAV_MVC_DEBUG") != NULL;
+    return on;
+}
+#define DEBUG(...) do { if (debug_on()) fprintf(stderr, "mvc: " __VA_ARGS__); } while (0)
 
 static uint32_t be32(const uint8_t *p) { return (uint32_t)p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]; }
 static uint16_t be16(const uint8_t *p) { return (uint16_t)(p[0] << 8 | p[1]); }
@@ -199,8 +209,8 @@ struct mvc {
     bool positioned;            /* read from where the base view is */
     bool eof;
     buf_t dpes;                 /* its PES being collected */
-    au_t queue[MAX_QUEUE];
-    int queued;
+    au_t *queue;                /* its access units read ahead, in decoding order */
+    int queued, queue_cap;
     uint8_t *chunk;
 };
 
@@ -248,6 +258,7 @@ void mvc_free(mvc_t *m)
     free(m->out.p);
     free(m->vpes.p);
     free(m->dpes.p);
+    free(m->queue);
     free(m->chunk);
     free(m);
 }
@@ -296,6 +307,16 @@ static void dep_pes_done(mvc_t *m)
             free(m->queue[0].data);
             memmove(m->queue, m->queue + 1, (MAX_QUEUE - 1) * sizeof(au_t));
             m->queued--;
+        }
+        if (m->queued == m->queue_cap) {
+            int cap = m->queue_cap ? m->queue_cap * 2 : 256;
+            au_t *q = realloc(m->queue, (size_t)cap * sizeof(au_t));
+            if (!q) {
+                m->dpes.len = m->dpes.pos = 0;
+                return;
+            }
+            m->queue = q;
+            m->queue_cap = cap;
         }
         size_t h = pes_header_len(p, n);
         au_t *a = &m->queue[m->queued];
@@ -404,6 +425,7 @@ static void dep_seek(mvc_t *m, int64_t dts)
     m->dep->seek(m->dep, start / UNIT * UNIT, SEEK_SET);
     m->unlock(m->user);
     m->positioned = true;
+    DEBUG("dependent clip from %lld (for DTS %lld)\n", (long long)start, (long long)dts);
 }
 
 /* The dependent access unit for the base picture with these times, taken
@@ -425,12 +447,22 @@ static bool dep_find(mvc_t *m, int64_t pts, int64_t dts, au_t *out)
             m->queued -= i + 1;
             return true;
         }
-        if (m->queued && m->queue[m->queued - 1].dts > dts + 2 * TS_SECOND)
+        if (m->queued && m->queue[m->queued - 1].dts > dts + 2 * TS_SECOND) {
+            DEBUG("no dependent view for PTS %lld DTS %lld: %d queued, PTS %lld..%lld, DTS %lld..%lld\n",
+                  (long long)pts, (long long)dts, m->queued, (long long)m->queue[0].pts,
+                  (long long)m->queue[m->queued - 1].pts, (long long)m->queue[0].dts,
+                  (long long)m->queue[m->queued - 1].dts);
             return false; /* it isn't there */
-        if (m->eof || !dep_read(m, CHUNK))
+        }
+        if (m->eof || !dep_read(m, CHUNK)) {
+            DEBUG("dependent clip ended (PTS %lld)\n", (long long)pts);
             return false;
+        }
+        DEBUG("read ahead for PTS %lld: %d queued, DTS %lld..%lld\n", (long long)pts, m->queued,
+              m->queued ? (long long)m->queue[0].dts : -1LL, m->queued ? (long long)m->queue[m->queued - 1].dts : -1LL);
     }
     m->positioned = false; /* lost: find it again next time */
+    DEBUG("lost the dependent view at PTS %lld\n", (long long)pts);
     return false;
 }
 

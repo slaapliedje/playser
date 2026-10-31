@@ -658,8 +658,14 @@ static int64_t bdn_stream_read(nav_stream_t *s, void *buf, uint64_t n)
          * it to read the dependent clip) */
         for (;;) {
             size_t got = mvc_take(s->mvc, buf, n);
-            if (got)
+            if (got) {
+                static FILE *dump;
+                if (!dump && getenv("DISCNAV_MVC_DUMP"))
+                    dump = fopen(getenv("DISCNAV_MVC_DUMP"), "wb");
+                if (dump)
+                    fwrite(buf, 1, got, dump);
                 return (int64_t)got;
+            }
             int r = next_unit(s);
             if (r < 0)
                 return r;
