@@ -22,6 +22,13 @@
       play without it.
     </p>
   </description>
+  <releases>
+    <release version="0.1.0" date="2026-10-31">
+      <description>
+        <p>First release: DVD and Blu-ray menus, 4K UHD with HDR, audio passthrough, disc titles and episodes from TheDiscDB.</p>
+      </description>
+    </release>
+  </releases>
   <content_rating type="oars-1.1"/>
   <supports>
     <control>gamepad</control>
