@@ -48,6 +48,7 @@ qt_add_qml_module(playser
         src/DiscIndex.h src/DiscIndex.cpp
         src/DiscFs.h src/DiscFs.cpp
         src/DiscNav.h src/DiscNav.cpp
+        src/SoundEffects.h src/SoundEffects.cpp
         src/SystemCheck.h src/SystemCheck.cpp
         src/Gamepad.h src/Gamepad.cpp
     QML_FILES

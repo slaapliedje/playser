@@ -8,6 +8,7 @@
 
 #include "Mpv.h"
 #include "OverlayEncoder.h"
+#include "SoundEffects.h"
 
 struct NavContext;
 struct discnav;
@@ -104,6 +105,7 @@ private:
     void applyTracks();
     void scheduleOverlay();
     void renderOverlay();
+    void playSounds();
 
     QPointer<Mpv> m_mpv;
     NavContext *m_ctx = nullptr;
@@ -119,4 +121,5 @@ private:
     bool m_overlayPending = false;
     bool m_overlayShown = false;
     OverlayEncoder m_encoder;
+    SoundEffects m_sounds;
 };

@@ -72,6 +72,9 @@ public:
     QString passthrough() const { return m_passthrough; }
     void setPassthrough(const QString &codecs);
     QVariantList tracks() const { return m_tracks; }
+    // mpv's volume as a gain (1 at 100%), 0 when muted: for sounds played
+    // beside mpv (SoundEffects)
+    float gain() const;
     QSize osdSize() const { return m_osdSize; }
     // where the video is drawn in the window (empty without video), and its
     // storage size

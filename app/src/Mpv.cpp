@@ -277,6 +277,15 @@ void Mpv::setMpvProperty(const QString &name, const QVariant &value)
     mpv_set_property_async(m_mpv, 0, name.toUtf8().constData(), MPV_FORMAT_NODE, &node);
 }
 
+float Mpv::gain() const
+{
+    int muted = 0;
+    double volume = 100;
+    mpv_get_property(m_mpv, "mute", MPV_FORMAT_FLAG, &muted);
+    mpv_get_property(m_mpv, "volume", MPV_FORMAT_DOUBLE, &volume);
+    return muted ? 0.0f : float(volume / 100);
+}
+
 void Mpv::screenshot(const QString &path)
 {
     command({ "screenshot-to-file", path, "window" });

@@ -78,6 +78,8 @@ struct nav_impl {
     int *queue;                 /* without menus: the playlists to play */
     int queue_len, queue_pos;
     bool restart;               /* a queued playlist started: new segment */
+    unsigned sounds[8];         /* sound effects played, not taken yet (oldest first) */
+    int sound_count;
 
     pthread_mutex_t olock;      /* guards the planes; never taken with lock wanted */
     BD_ARGB_BUFFER argb;        /* libbluray draws into argb.buf[plane] */
@@ -531,9 +533,15 @@ static bool handle_event(nav_impl_t *nav, nav_stream_t *s, const BD_EVENT *ev, b
     case BD_EVENT_POPUP:
         logf_(nav, 1, "pop-up menu %savailable", ev->param ? "" : "not ");
         return false;
+    case BD_EVENT_SOUND_EFFECT:
+        logf_(nav, 1, "sound effect %u", ev->param);
+        if (nav->sound_count == (int)(sizeof(nav->sounds) / sizeof(nav->sounds[0])))
+            return false; /* nobody is taking them */
+        nav->sounds[nav->sound_count++] = ev->param;
+        emit(nav, DISCNAV_EVENT_SOUND);
+        return false;
     case BD_EVENT_UO_MASK_CHANGED:
     case BD_EVENT_KEY_INTEREST_TABLE:
-    case BD_EVENT_SOUND_EFFECT:
     case BD_EVENT_ANGLE:
     default:
         return false;
@@ -808,6 +816,29 @@ static int bdn_get_playlist(nav_impl_t *nav)
     return playlist;
 }
 
+static int bdn_take_sound(nav_impl_t *nav, int16_t **pcm, int *channels)
+{
+    pthread_mutex_lock(&nav->lock);
+    int frames = 0;
+    while (nav->sound_count && !frames) {
+        unsigned id = nav->sounds[0];
+        memmove(nav->sounds, nav->sounds + 1, --nav->sound_count * sizeof(nav->sounds[0]));
+        BLURAY_SOUND_EFFECT e;
+        if (bd_get_sound_effect(nav->bd, id, &e) <= 0 || !e.num_frames || !e.num_channels) {
+            logf_(nav, 0, "no sound effect %u on the disc", id);
+            continue;
+        }
+        size_t n = (size_t)e.num_frames * e.num_channels;
+        if (!(*pcm = malloc(n * sizeof(int16_t))))
+            break;
+        memcpy(*pcm, e.samples, n * sizeof(int16_t));
+        *channels = e.num_channels;
+        frames = (int)e.num_frames;
+    }
+    pthread_mutex_unlock(&nav->lock);
+    return frames;
+}
+
 static bool bdn_seek(nav_impl_t *nav, double seconds)
 {
     pthread_mutex_lock(&nav->lock);
@@ -1032,6 +1063,7 @@ const nav_backend_t bd_backend = {
     .select_stream = bdn_select_stream,
     .get_position = bdn_get_position,
     .get_playlist = bdn_get_playlist,
+    .take_sound = bdn_take_sound,
     .seek = bdn_seek,
     .get_palette = bdn_get_palette,
     .overlay_size = bdn_overlay_size,

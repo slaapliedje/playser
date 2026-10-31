@@ -414,6 +414,23 @@ void DiscNav::onNavEvent(int event)
         break;
     case DISCNAV_EVENT_STOP:
         break; // the segment's end follows (onEndFile)
+    case DISCNAV_EVENT_SOUND:
+        playSounds();
+        break;
+    }
+}
+
+// A menu's click sounds. Players leave them out of a bitstream (the
+// receiver decodes that), and opening an output beside mpv's would take
+// the device mpv's passthrough needs to itself: only with audio decoded.
+void DiscNav::playSounds()
+{
+    int16_t *pcm;
+    int channels;
+    while (int frames = discnav_take_sound(m_ctx->nav, &pcm, &channels)) {
+        if (m_mpv && m_mpv->passthrough().isEmpty())
+            m_sounds.play(pcm, frames, channels, m_mpv->gain());
+        free(pcm);
     }
 }
 

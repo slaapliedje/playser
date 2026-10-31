@@ -43,6 +43,9 @@ typedef enum {
     DISCNAV_EVENT_TRACKS,
     /* playback reached the end of the disc's programming */
     DISCNAV_EVENT_STOP,
+    /* the menus played a sound effect (Blu-ray: a button's click):
+     * call discnav_take_sound */
+    DISCNAV_EVENT_SOUND,
 } discnav_event_t;
 
 typedef void (*discnav_event_fn)(void *user, discnav_event_t event);
@@ -165,6 +168,12 @@ bool discnav_get_position(discnav_t *nav, int *title, double *seconds, double *l
  * opens a title by without menus (e.g. mpv's bd://mpls/42). -1 in a menu
  * or on a DVD. */
 int discnav_get_playlist(discnav_t *nav);
+
+/* The oldest sound effect the menus played that wasn't taken yet: 48 kHz
+ * 16-bit PCM, interleaved if stereo, in *pcm (free() it) and its channel
+ * count in *channels. Returns its length in frames, 0 if there's none.
+ * Reads the disc the first time (Blu-ray: BDMV/AUXDATA/sound.bdmv). */
+int discnav_take_sound(discnav_t *nav, int16_t **pcm, int *channels);
 
 /* Jumps to `seconds` into the current title (a user jump: expect a
  * flush). False in a menu or if the disc refuses. */
