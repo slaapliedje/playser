@@ -57,10 +57,22 @@ public:
     Q_INVOKABLE void setMpvProperty(const QString &name, const QVariant &value);
 
     // Shows a premultiplied BGRA image (QImage::Format_ARGB32_Premultiplied)
-    // scaled to `dst` (window pixels; empty: the whole window); a null image
-    // removes the overlay. Higher ids are drawn on top. Only one overlay-add
-    // per id is in flight; newer images replace queued ones.
+    // scaled to `dst` (window pixels of one eye's view, see osdSize();
+    // empty: the whole view); a null image removes the overlay. Higher ids
+    // are drawn on top. Only one overlay-add per id is in flight; newer
+    // images replace queued ones.
     void setOverlay(int id, const QImage &image, const QRect &dst = {});
+
+    // Side-by-side 3D display (e.g. XR glasses in 3D mode), as `size` (the
+    // display's mode; empty: off). The window is then exactly that size
+    // rather than fullscreen, so the compositor shows it 1:1 (gamescope fits
+    // a fullscreen app's 16:9 window into the middle), and each half is one
+    // eye's view: overlays are drawn into both, 2D video is shown in both
+    // (flat), and stereo video (setStereoVideo) is shown as it is.
+    void setSideBySide(const QSize &size);
+    bool sideBySide() const { return !m_sbsSize.isEmpty(); }
+    // The video being loaded is full side-by-side 3D (libedge264mvc's output).
+    void setStereoVideo(bool on);
     void screenshot(const QString &path);
 
     bool paused() const { return m_paused; }
@@ -76,9 +88,10 @@ public:
     // mpv's volume as a gain (1 at 100%), 0 when muted: for sounds played
     // beside mpv (SoundEffects)
     float gain() const;
+    // one eye's view: the window, or half of it on a side-by-side display
     QSize osdSize() const { return m_osdSize; }
-    // where the video is drawn in the window (empty without video), and its
-    // storage size
+    // where the video is drawn in one eye's view (empty without video), and
+    // its storage size
     QRect videoRect() const { return m_videoRect; }
     QSize videoSize() const { return m_videoSize; }
     // The audio watchdog takes a clock standing still for a failing audio
@@ -123,7 +136,10 @@ private:
         bool hasQueued = false;
         bool shown = false;
     };
+    void setOverlaySlot(int id, const QImage &image, const QRect &dst);
     void sendOverlay(int id, const QImage &image, const QRect &dst);
+    void applyStereo();
+    void updateOsdSize();
     void updateVideoRect();
     void checkAudioStall();
     void applySpdif(bool on);
@@ -139,8 +155,12 @@ private:
     int m_chapter = -1;
     QVariantList m_chapters;
     QVariantList m_tracks;
-    QSize m_osdSize;
+    QSize m_windowSize; // mpv's osd-dimensions
+    QSize m_osdSize;    // one eye's view
     QRect m_videoRect;
+    bool m_fullscreen = false; // asked for at startup
+    QSize m_sbsSize;
+    bool m_stereoVideo = false;
     QSize m_videoDisplay; // the video's display size (aspect applied)
     bool m_stallCheck = true;
     QSize m_videoSize;

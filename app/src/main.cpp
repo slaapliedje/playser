@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <QCommandLineParser>
 #include <QDir>
+#include <QFile>
 #include <QFontDatabase>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -122,6 +123,41 @@ static void setupDecryption()
     }
 }
 
+// A side-by-side 3D display, as its mode (empty: none): XR glasses that
+// show the left half of a 3840x1080 picture to the left eye. VITURE glasses
+// switch to that mode (and offer only it) when set to 3D with their Mode
+// button; in 2D they offer 1920x1080. PLAYSER_SBS=WxH or "off" overrides.
+static QSize sideBySideDisplay()
+{
+    const QString forced = qEnvironmentVariable("PLAYSER_SBS");
+    if (!forced.isEmpty()) {
+        const QStringList wh = forced.split('x');
+        return wh.size() == 2 ? QSize(wh[0].toInt(), wh[1].toInt()) : QSize();
+    }
+    const QDir drm("/sys/class/drm");
+    for (const QString &name : drm.entryList({ "card*-*" }, QDir::Dirs)) {
+        auto read = [&](const char *file) {
+            QFile f(drm.filePath(name + '/' + file));
+            return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+        };
+        if (!read("status").startsWith("connected") || !read("enabled").startsWith("enabled"))
+            continue;
+        // the monitor name descriptor (tag 0xfc) of the EDID's base block
+        const QByteArray edid = read("edid");
+        bool glasses = false;
+        for (int at = 54; at + 18 <= qMin<int>(edid.size(), 126); at += 18)
+            if (!edid[at] && !edid[at + 1] && uchar(edid[at + 3]) == 0xfc)
+                glasses = edid.mid(at + 5, 13).startsWith("VITURE");
+        const QList<QByteArray> mode = read("modes").split('\n').value(0).split('x');
+        if (glasses && mode.size() == 2) {
+            const QSize size(mode[0].toInt(), mode[1].toInt());
+            if (size.width() >= size.height() * 3) // 32:9: both eyes' views
+                return size;
+        }
+    }
+    return {};
+}
+
 // mpv key names (from its window) -> the Qt keys the QML UI handles
 static int qtKeyForMpv(const QString &name)
 {
@@ -203,6 +239,7 @@ int main(int argc, char *argv[])
         { "play-playlists", "Play a Blu-ray's playlists in turn as episodes, e.g. /dev/sr0:12,10 (testing).",
           "device:list" },
         { "mpv-option", "Set an mpv option, e.g. audio-spdif=ac3 (testing).", "name=value" },
+        { "stereo", "The --play file is 3D (H.264 MVC), e.g. a 3D Blu-ray's video (testing)." },
     });
     // Testing on a handheld through its existing Steam shortcut: extra
     // arguments from the environment (set with `flatpak override --env=`)
@@ -211,6 +248,12 @@ int main(int argc, char *argv[])
     args.process(arguments);
 
     Mpv mpv(args.isSet("fullscreen"), args.values("mpv-option"));
+    mpv.setStereoVideo(args.isSet("stereo"));
+    // XR glasses switched between 2D and 3D by hand: follow them
+    QTimer displayCheck;
+    QObject::connect(&displayCheck, &QTimer::timeout, &mpv, [&mpv] { mpv.setSideBySide(sideBySideDisplay()); });
+    displayCheck.start(2000);
+    mpv.setSideBySide(sideBySideDisplay());
     QQmlEngine engine;
     QObject::connect(&engine, &QQmlEngine::quit, &app, &QGuiApplication::quit);
     quitOnSignals(&app);

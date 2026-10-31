@@ -138,7 +138,8 @@ Mpv::Transfer transferOf(const QVariantMap &videoParams)
 
 } // namespace
 
-Mpv::Mpv(bool fullscreen, const QStringList &options, QObject *parent) : QObject(parent)
+Mpv::Mpv(bool fullscreen, const QStringList &options, QObject *parent)
+    : QObject(parent), m_fullscreen(fullscreen)
 {
     m_mpv = mpv_create();
     if (!m_mpv)
@@ -239,8 +240,11 @@ void Mpv::load(const QString &url, const QVariantMap &options, double start)
 void Mpv::updateVideoRect()
 {
     QRect rect;
-    if (!m_videoDisplay.isEmpty() && !m_osdSize.isEmpty()) {
-        const QSize fit = m_videoDisplay.scaled(m_osdSize, Qt::KeepAspectRatio);
+    QSize display = m_videoDisplay;
+    if (m_stereoVideo && sideBySide())
+        display.setWidth(display.width() / 2); // one eye's half
+    if (!display.isEmpty() && !m_osdSize.isEmpty()) {
+        const QSize fit = display.scaled(m_osdSize, Qt::KeepAspectRatio);
         rect = QRect(QPoint((m_osdSize.width() - fit.width()) / 2, (m_osdSize.height() - fit.height()) / 2), fit);
     }
     if (rect != m_videoRect) {
@@ -292,7 +296,77 @@ void Mpv::screenshot(const QString &path)
     command({ "screenshot-to-file", path, "window" });
 }
 
+// the other eye's copy of overlay `id` on a side-by-side display
+constexpr int kSecondEye = 32;
+
 void Mpv::setOverlay(int id, const QImage &image, const QRect &dst)
+{
+    Q_ASSERT(id < kSecondEye);
+    if (!sideBySide()) {
+        setOverlaySlot(id, image, dst);
+        return;
+    }
+    const QRect to = !dst.isEmpty() ? dst : QRect(QPoint(0, 0), m_osdSize);
+    setOverlaySlot(id, image, to);
+    setOverlaySlot(id + kSecondEye, image, to.translated(m_osdSize.width(), 0));
+}
+
+void Mpv::setSideBySide(const QSize &size)
+{
+    if (size == m_sbsSize)
+        return;
+    m_sbsSize = size;
+    if (sideBySide()) {
+        qInfo("display: side-by-side 3D, %dx%d", size.width(), size.height());
+        setMpvProperty("fullscreen", false);
+        setMpvProperty("geometry", QStringLiteral("%1x%2+0+0").arg(size.width()).arg(size.height()));
+    } else {
+        qInfo("display: 2D");
+        for (auto it = m_overlays.cbegin(); it != m_overlays.cend(); ++it)
+            if (it.key() >= kSecondEye && it->shown)
+                QMetaObject::invokeMethod(this, [this, id = it.key()] { setOverlaySlot(id, QImage(), {}); },
+                                          Qt::QueuedConnection);
+        setMpvProperty("geometry", "1280x720");
+        setMpvProperty("fullscreen", m_fullscreen);
+    }
+    applyStereo();
+}
+
+void Mpv::setStereoVideo(bool on)
+{
+    if (on == m_stereoVideo)
+        return;
+    m_stereoVideo = on;
+    applyStereo();
+}
+
+// 3D video on a side-by-side display: libedge264mvc decodes both eyes (in
+// software: with hwdec mpv swaps in the hardware h264 decoder, one eye).
+// 2D video there: both eyes get the same picture (hwdec copies frames back
+// for the filter). Elsewhere: the base view, decoded as usual.
+void Mpv::applyStereo()
+{
+    const bool stereo = m_stereoVideo && sideBySide();
+    const bool flat = !m_stereoVideo && sideBySide();
+    setMpvProperty("vd", stereo ? "libedge264mvc" : "");
+    setMpvProperty("hwdec", stereo ? "no" : flat ? "auto-copy-safe" : "auto-safe");
+    setMpvProperty("vf", flat ? "lavfi=[split[l][r];[l][r]hstack]" : "");
+    updateOsdSize();
+}
+
+void Mpv::updateOsdSize()
+{
+    QSize size = m_windowSize;
+    if (sideBySide())
+        size.setWidth(size.width() / 2);
+    if (size != m_osdSize) {
+        m_osdSize = size;
+        emit osdSizeChanged();
+    }
+    updateVideoRect();
+}
+
+void Mpv::setOverlaySlot(int id, const QImage &image, const QRect &dst)
 {
     OverlaySlot &slot = m_overlays[id];
     if (slot.inFlight) {
@@ -432,12 +506,8 @@ void Mpv::processEvents()
                 break;
             case PropOsdDimensions: {
                 const QVariantMap d = has ? nodeToVariant(static_cast<mpv_node *>(p->data)).toMap() : QVariantMap();
-                const QSize size(d.value("w").toInt(), d.value("h").toInt());
-                if (size != m_osdSize) {
-                    m_osdSize = size;
-                    emit osdSizeChanged();
-                }
-                updateVideoRect();
+                m_windowSize = QSize(d.value("w").toInt(), d.value("h").toInt());
+                updateOsdSize();
                 break;
             }
             case PropSeeking: m_seeking = has && *static_cast<int *>(p->data); break;
