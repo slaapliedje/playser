@@ -64,6 +64,10 @@ public:
     // are drawn on top. Only one overlay-add per id is in flight; newer
     // images replace queued ones.
     void setOverlay(int id, const QImage &image, const QRect &dst = {});
+    // On a side-by-side display: a different image for each eye, at the
+    // same place in each view (for things in front of or behind the
+    // screen); elsewhere the left one.
+    void setOverlayEyes(int id, const QImage &left, const QImage &right, const QRect &dst);
 
     // Side-by-side 3D display (e.g. XR glasses in 3D mode), as `size` (the
     // display's mode; empty: off). The window is then exactly that size

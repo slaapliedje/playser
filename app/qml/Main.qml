@@ -75,6 +75,8 @@ FocusScope {
         }
     }
     DiscNav { id: nav; mpv: root.mpv }
+    // 3D glasses connected: a 3D logo, standing out of the screen in 3D mode
+    StereoBadge { mpv: root.mpv; shown: home.visible && root.mpv.stereoDisplay }
     SystemCheck { id: system }
     // a newly inserted disc lets MakeMKV say whether the drive reads 4K UHD
     Connections {

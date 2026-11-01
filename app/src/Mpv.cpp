@@ -313,6 +313,17 @@ void Mpv::setOverlay(int id, const QImage &image, const QRect &dst)
     setOverlaySlot(id + kSecondEye, image, to.translated(m_osdSize.width(), 0));
 }
 
+void Mpv::setOverlayEyes(int id, const QImage &left, const QImage &right, const QRect &dst)
+{
+    Q_ASSERT(id < kSecondEye);
+    if (!sideBySide()) {
+        setOverlaySlot(id, left, dst);
+        return;
+    }
+    setOverlaySlot(id, left, dst);
+    setOverlaySlot(id + kSecondEye, right, dst.translated(m_osdSize.width(), 0));
+}
+
 void Mpv::setSideBySide(const QSize &size)
 {
     if (size == m_sbsSize)
