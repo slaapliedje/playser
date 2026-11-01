@@ -130,7 +130,29 @@ static void setupDecryption()
 struct StereoDisplay {
     bool connected = false;
     QSize sideBySide; // in 3D mode: its mode
+    QString audioCard; // their sound card, as PipeWire names it ("pci-0000_c2_00.1")
 };
+
+// The sound card the glasses' audio goes through: the one whose display
+// (ELD, from the display's EDID) names them.
+static QString glassesAudioCard()
+{
+    const QDir asound("/proc/asound");
+    for (const QString &card : asound.entryList({ "card*" }, QDir::Dirs)) {
+        for (const QString &eld : QDir(asound.filePath(card)).entryList({ "eld#*" }, QDir::Files)) {
+            QFile f(asound.filePath(card + '/' + eld));
+            if (!f.open(QIODevice::ReadOnly))
+                continue;
+            const QByteArray info = f.readAll();
+            if (!info.contains("eld_valid\t\t1") || !info.contains("monitor_name\t\tVITURE"))
+                continue;
+            const QString pci = QFileInfo(QStringLiteral("/sys/class/sound/%1/device").arg(card)).canonicalFilePath();
+            if (!pci.isEmpty())
+                return "pci-" + QFileInfo(pci).fileName().replace(':', '_');
+        }
+    }
+    return {};
+}
 
 static StereoDisplay stereoDisplay()
 {
@@ -160,6 +182,7 @@ static StereoDisplay stereoDisplay()
         if (!glasses)
             continue;
         found.connected = true;
+        found.audioCard = glassesAudioCard();
         const QList<QByteArray> mode = read("modes").split('\n').value(0).split('x');
         if (mode.size() == 2) {
             const QSize size(mode[0].toInt(), mode[1].toInt());
@@ -266,6 +289,7 @@ int main(int argc, char *argv[])
     auto checkDisplay = [&mpv] {
         const StereoDisplay display = stereoDisplay();
         mpv.setStereoDisplay(display.connected);
+        mpv.setGlassesAudio(display.audioCard);
         mpv.setSideBySide(display.sideBySide);
     };
     QObject::connect(&displayCheck, &QTimer::timeout, &mpv, checkDisplay);

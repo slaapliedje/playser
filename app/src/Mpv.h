@@ -34,6 +34,8 @@ class Mpv : public QObject
     // codecs to send to the receiver undecoded (mpv audio-spdif), e.g.
     // "ac3,truehd"; empty decodes everything
     Q_PROPERTY(QString passthrough READ passthrough WRITE setPassthrough NOTIFY passthroughChanged)
+    // 3D glasses connected (in 2D or 3D mode): 3D discs play in 3D
+    Q_PROPERTY(bool stereoDisplay READ stereoDisplay NOTIFY stereoDisplayChanged)
 
 public:
     // Transfer function overlays must be encoded with: the display's when
@@ -75,8 +77,18 @@ public:
     // libedge264mvc; baseRight: its base view is the right eye.
     void setStereoVideo(bool on, bool baseRight = false);
     // A display that can show 3D is connected (XR glasses, in 2D or 3D mode).
-    void setStereoDisplay(bool on) { m_stereoDisplay = on; }
+    void setStereoDisplay(bool on)
+    {
+        if (on != m_stereoDisplay) {
+            m_stereoDisplay = on;
+            emit stereoDisplayChanged();
+        }
+    }
     bool stereoDisplay() const { return m_stereoDisplay; }
+    // Plays through the glasses' audio, on this sound card (as in PipeWire's
+    // node names, "pci-0000_c2_00.1"; empty: the default output). Decoded:
+    // glasses take PCM, so passthrough is off meanwhile.
+    void setGlassesAudio(const QString &card);
     void screenshot(const QString &path);
 
     bool paused() const { return m_paused; }
@@ -116,6 +128,7 @@ signals:
     void chaptersChanged();
     void tracksChanged();
     void passthroughChanged();
+    void stereoDisplayChanged();
     void osdSizeChanged();
     void videoGeometryChanged();
     void transferChanged();
@@ -167,6 +180,7 @@ private:
     bool m_stereoVideo = false;
     bool m_baseRight = false;
     bool m_stereoDisplay = false;
+    QString m_glassesAudio;
     QHash<QString, QString> m_stereoOptions; // as last set by applyStereo
     QSize m_videoDisplay; // the video's display size (aspect applied)
     bool m_stallCheck = true;

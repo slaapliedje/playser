@@ -150,6 +150,7 @@ FocusScope {
     DiscScreen {
         id: discScreen
         anchors.fill: parent
+        stereoDisplay: root.mpv.stereoDisplay
         onPlayRequested: (index, start) => {
             const d = drive
             const episodes = d.disc && d.disc.episodes ? d.disc.episodes : []

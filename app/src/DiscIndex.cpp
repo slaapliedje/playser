@@ -288,6 +288,9 @@ QVariantMap DiscIndex::discMeta(DiscFs &fs)
     // index.bdmv's version: "0300" is a 4K UHD disc, "0100"/"0200" Blu-ray
     if (fs.read("BDMV/index.bdmv", 1 << 20).startsWith("INDX0300"))
         meta.insert("format", QStringLiteral("UHD"));
+    // Blu-ray 3D: the views interleaved for the drive (SSIF files)
+    if (fs.isDir("BDMV/STREAM/SSIF"))
+        meta.insert("stereo", true);
 
     const QString dir = QStringLiteral("BDMV/META/DL/");
     QStringList files = filesWithSuffix(fs, dir, { "xml" });

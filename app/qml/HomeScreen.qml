@@ -100,7 +100,7 @@ FocusScope {
         // a 4K disc in a drive MakeMKV can't read them with
         readonly property bool uhdUnsupported: disc.format === "UHD" && !!root.check
             && (root.check.uhdDrives[drive.device] || {}).state === "no"
-        readonly property string kindLabel: disc.format === "UHD" ? "4K UHD" : ({
+        readonly property string kindLabel: disc.format === "UHD" ? "4K UHD" : disc.stereo ? "Blu-ray 3D" : ({
             "bluray": "Blu-ray", "dvd": "DVD", "cd": "CD", "none": "No disc", "unknown": "Disc"
         })[drive.kind] || drive.kind
 

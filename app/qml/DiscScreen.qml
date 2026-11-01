@@ -9,6 +9,8 @@ FocusScope {
     id: root
 
     property var drive: null
+    // 3D glasses connected: a 3D disc plays in 3D
+    property bool stereoDisplay: false
     readonly property var disc: drive && drive.disc ? drive.disc : ({})
     readonly property var episodes: disc.episodes || []
     readonly property bool series: episodes.length > 1
@@ -120,10 +122,34 @@ FocusScope {
             font.weight: Font.DemiBold
             elide: Text.ElideRight
         }
-        Text {
-            text: root.showingExtras ? "Extras" : (root.disc.release || "")
-            color: Theme.textDim
-            font.pixelSize: Theme.fontMedium
+        Row {
+            spacing: Theme.spacing * 0.6
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: text !== ""
+                text: root.showingExtras ? "Extras" : (root.disc.release || "")
+                color: Theme.textDim
+                font.pixelSize: Theme.fontMedium
+            }
+            // how a 3D disc will play
+            Rectangle {
+                visible: !!root.disc.stereo
+                anchors.verticalCenter: parent.verticalCenter
+                width: stereoLabel.implicitWidth + Theme.spacing
+                height: stereoLabel.implicitHeight + Theme.spacing * 0.3
+                radius: height / 2
+                color: root.stereoDisplay ? Theme.accent : "transparent"
+                border.color: root.stereoDisplay ? Theme.accent : Theme.textDim
+                border.width: 2 * Theme.scale
+                Text {
+                    id: stereoLabel
+                    anchors.centerIn: parent
+                    text: root.stereoDisplay ? "3D" : "3D disc  ·  plays in 2D"
+                    color: root.stereoDisplay ? Theme.background : Theme.textDim
+                    font.pixelSize: Theme.fontSmall
+                    font.weight: Font.DemiBold
+                }
+            }
         }
     }
 

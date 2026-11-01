@@ -325,6 +325,8 @@ void DiscMonitor::identify(const QString &blockPath, const QString &device, cons
             disc.insert("art", meta.value("art"));
         if (!disc.contains("format") && meta.contains("format"))
             disc.insert("format", meta.value("format"));
+        if (meta.contains("stereo"))
+            disc.insert("stereo", true);
         const QString source = fs->source();
         QMetaObject::invokeMethod(self, [self, blockPath, discId, mountPoint, source, hash, disc, known] {
             if (!self)

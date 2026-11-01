@@ -431,7 +431,29 @@ void Mpv::setPassthrough(const QString &codecs)
 
 void Mpv::applySpdif(bool on)
 {
-    setMpvProperty("audio-spdif", on && !m_passthroughFailed ? m_passthrough : QString());
+    setMpvProperty("audio-spdif", on && !m_passthroughFailed && m_glassesAudio.isEmpty() ? m_passthrough : QString());
+}
+
+void Mpv::setGlassesAudio(const QString &card)
+{
+    if (card == m_glassesAudio)
+        return;
+    m_glassesAudio = card;
+    QString device = QStringLiteral("auto");
+    mpv_node list;
+    if (!card.isEmpty() && mpv_get_property(m_mpv, "audio-device-list", MPV_FORMAT_NODE, &list) >= 0) {
+        for (const QVariant &d : nodeToVariant(&list).toList()) {
+            const QString name = d.toMap().value("name").toString();
+            if (name.contains(card) && name.contains(QLatin1String("hdmi"))) {
+                device = name;
+                break;
+            }
+        }
+        mpv_free_node_contents(&list);
+    }
+    qInfo("audio: %s", device == QLatin1String("auto") ? "the default output" : qPrintable(device));
+    setMpvProperty("audio-device", device);
+    applySpdif(true);
 }
 
 void Mpv::onAudioOutputBusy()
