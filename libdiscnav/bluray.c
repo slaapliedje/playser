@@ -44,6 +44,7 @@
 #include <libbluray/bluray.h>
 #include <libbluray/keys.h>
 #include <libbluray/overlay.h>
+#include <libbluray/player_settings.h>
 
 #define UNIT 6144
 #define IDLE_WAIT_MS 40
@@ -393,8 +394,10 @@ static void load_playlist(nav_impl_t *nav, int playlist)
     nav->playitem = 0;
     nav->logged_aid = nav->logged_sid = -2;
     nav->dep_count = mvc_dep_clips(nav->bd, playlist, nav->dep_clips, 32);
-    if (nav->dep_count)
-        logf_(nav, 1, "%05d.mpls is 3D (dependent view %s.m2ts)", playlist, nav->dep_clips[0]);
+    for (int i = 0; i < nav->dep_count; i++)
+        logf_(nav, 1, "%05d.mpls is 3D: play item %d, %s.m2ts with dependent view %s.m2ts", playlist, i,
+              nav->info && (unsigned)i < nav->info->clip_count ? nav->info->clips[i].clip_id : "?",
+              nav->dep_clips[i]);
 }
 
 /* Without menus: plays queue[pos] from `seconds` (lock held, or opening). */
@@ -1068,6 +1071,15 @@ static nav_impl_t *open_disc(const char *device, const char *lang, bool menus,
     bd_set_player_setting_str(nav->bd, BLURAY_PLAYER_SETTING_PG_LANG, l);
     bd_set_player_setting_str(nav->bd, BLURAY_PLAYER_SETTING_COUNTRY_CODE, "us");
     bd_set_player_setting(nav->bd, BLURAY_PLAYER_SETTING_REGION_CODE, 1); /* A */
+    if (getenv("DISCNAV_BD_2D")) {
+        /* testing: undo libbluray's 3D profile (bd_open sets it for a 3D
+         * disc): a 2D player */
+        bd_set_player_setting(nav->bd, BLURAY_PLAYER_SETTING_OUTPUT_PREFER, BLURAY_OUTPUT_PREFER_2D);
+        bd_set_player_setting(nav->bd, BLURAY_PLAYER_SETTING_DISPLAY_CAP, 0);
+        bd_set_player_setting(nav->bd, BLURAY_PLAYER_SETTING_3D_CAP, 0);
+        bd_set_player_setting(nav->bd, BLURAY_PLAYER_SETTING_PLAYER_PROFILE, BLURAY_PLAYER_PROFILE_2_v2_0);
+        logf_(nav, 0, "2D player profile (DISCNAV_BD_2D)");
+    }
     bd_register_overlay_proc(nav->bd, nav, yuv_overlay);
     bd_register_argb_overlay_proc(nav->bd, nav, argb_overlay, &nav->argb);
 

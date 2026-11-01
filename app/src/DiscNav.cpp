@@ -273,6 +273,14 @@ void DiscNav::opened(NavContext *ctx, unsigned generation)
     load();
 }
 
+void DiscNav::setGraphics(bool shown)
+{
+    if (shown == m_overlayShown)
+        return;
+    m_overlayShown = shown;
+    emit graphicsChanged();
+}
+
 void DiscNav::close()
 {
     m_generation++; // an open still running is dropped when it ends
@@ -294,7 +302,7 @@ void DiscNav::close()
         m_mpv->setStereoVideo(false);
         m_mpv->setMpvProperty("sub-lavc-o", QVariantMap());
     }
-    m_overlayShown = false;
+    setGraphics(false);
     freeIfDone(ctx);
     if (m_inMenu) {
         m_inMenu = false;
@@ -592,12 +600,12 @@ void DiscNav::renderOverlay()
     if (!discnav_render_overlay(m_ctx->nav, rgba.bits(), frame.width(), frame.height())) {
         if (m_overlayShown)
             m_mpv->setOverlay(kMenuOverlay, QImage());
-        m_overlayShown = false;
+        setGraphics(false);
         return;
     }
     qCDebug(lcNav, "overlay %dx%d onto %d,%d %dx%d", frame.width(), frame.height(), rect.x(), rect.y(),
             rect.width(), rect.height());
     const QImage bgra = rgba.convertToFormat(QImage::Format_ARGB32_Premultiplied);
     m_mpv->setOverlay(kMenuOverlay, m_encoder.encode(bgra, m_mpv->transfer()), rect);
-    m_overlayShown = true;
+    setGraphics(true);
 }

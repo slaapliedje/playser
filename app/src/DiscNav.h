@@ -30,6 +30,9 @@ class DiscNav : public QObject
     Q_PROPERTY(bool active READ active NOTIFY activeChanged)
     // in a menu (d-pad and A go to its buttons) rather than a title
     Q_PROPERTY(bool inMenu READ inMenu NOTIFY inMenuChanged)
+    // the disc's menu graphics are on screen (possibly with no video under
+    // them: a BD-J menu over a still background)
+    Q_PROPERTY(bool graphics READ graphics NOTIFY graphicsChanged)
     // "dvd" or "bluray" once open, else ""
     Q_PROPERTY(QString format READ format NOTIFY activeChanged)
     // the disc's menus run (open()), rather than a list of titles
@@ -51,6 +54,7 @@ public:
     void setMpv(Mpv *mpv);
     bool active() const { return m_ctx != nullptr; }
     bool inMenu() const { return m_inMenu; }
+    bool graphics() const { return m_overlayShown; }
     bool menus() const { return m_menus; }
     int title() const { return m_title; }
     QString format() const;
@@ -84,6 +88,7 @@ public:
     Q_INVOKABLE bool selectStream(const QString &type, const QVariant &id);
 
 signals:
+    void graphicsChanged();
     void mpvChanged();
     void activeChanged();
     void inMenuChanged();
@@ -99,6 +104,7 @@ private slots:
     void onNavEvent(int event);
 
 private:
+    void setGraphics(bool shown);
     void start(bool menus, std::function<struct discnav *(NavContext *)> openFn);
     void opened(NavContext *ctx, unsigned generation);
     void load();

@@ -207,6 +207,7 @@ struct mvc {
     BD_FILE_H *dep;
     int64_t dep_size;
     bool positioned;            /* read from where the base view is */
+    int64_t retry_dts;          /* lost it: base view alone until this DTS */
     bool eof;
     buf_t dpes;                 /* its PES being collected */
     au_t *queue;                /* its access units read ahead, in decoding order */
@@ -267,6 +268,7 @@ void mvc_reset(mvc_t *m)
 {
     m->vpes.len = m->vpes.pos = 0;
     m->positioned = false;
+    m->retry_dts = 0;
     m->eof = false;
     clear_queue(m);
 }
@@ -434,6 +436,9 @@ static bool dep_find(mvc_t *m, int64_t pts, int64_t dts, au_t *out)
 {
     if (!m->dep)
         return false;
+    if (m->retry_dts && dts < m->retry_dts && dts > m->retry_dts - 20 * TS_SECOND)
+        return false;
+    m->retry_dts = 0;
     if (!m->positioned)
         dep_seek(m, dts);
     for (int reads = 0; reads < 4; reads++) {
@@ -461,8 +466,11 @@ static bool dep_find(mvc_t *m, int64_t pts, int64_t dts, au_t *out)
         DEBUG("read ahead for PTS %lld: %d queued, DTS %lld..%lld\n", (long long)pts, m->queued,
               m->queued ? (long long)m->queue[0].dts : -1LL, m->queued ? (long long)m->queue[m->queued - 1].dts : -1LL);
     }
-    m->positioned = false; /* lost: find it again next time */
-    DEBUG("lost the dependent view at PTS %lld\n", (long long)pts);
+    /* lost: the base view alone for a while, then look again (searching
+     * for every picture would starve the stream) */
+    m->positioned = false;
+    m->retry_dts = dts + 10 * TS_SECOND;
+    DEBUG("lost the dependent view at PTS %lld; trying again in 10 s\n", (long long)pts);
     return false;
 }
 

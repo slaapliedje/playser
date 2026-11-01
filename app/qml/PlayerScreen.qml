@@ -168,6 +168,12 @@ FocusScope {
 
     Connections {
         target: root.nav
+        // a menu can come before any video (a BD-J menu over a still
+        // background): show it, or the opening screen would cover it
+        function onGraphicsChanged() {
+            if (root.nav.graphics && root.opening && root.navigating)
+                root.opening = false
+        }
         function onStopped() {
             if (!root.active)
                 return
