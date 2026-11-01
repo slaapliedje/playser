@@ -423,19 +423,24 @@ static bool start_playlist(nav_impl_t *nav, int pos, double seconds)
 
 /* ---------- the stream ---------- */
 
-/* Waits a little for time to pass or the user to act (lock held). */
-static void wait_a_little(nav_impl_t *nav, nav_stream_t *s)
+/* Waits up to ms for time to pass or the user to act (lock held). */
+static void wait_ms(nav_impl_t *nav, nav_stream_t *s, int ms)
 {
     unsigned gen = nav->gen;
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_nsec += IDLE_WAIT_MS * 1000000;
+    ts.tv_nsec += ms * 1000000L;
     if (ts.tv_nsec >= 1000000000) {
         ts.tv_sec++;
         ts.tv_nsec -= 1000000000;
     }
     while (gen == nav->gen && !s->cancel && pthread_cond_timedwait(&nav->wake, &nav->lock, &ts) != ETIMEDOUT)
         ;
+}
+
+static void wait_a_little(nav_impl_t *nav, nav_stream_t *s)
+{
+    wait_ms(nav, s, IDLE_WAIT_MS);
 }
 
 /* Without menus, the current playlist is done: on to the next, or stop
@@ -597,7 +602,9 @@ static int next_unit(nav_stream_t *s)
         BD_EVENT ev;
         int n = bd_read_ext(nav->bd, s->buf, UNIT, &ev);
         bool end = false, wait = n == 0 && ev.event == BD_EVENT_NONE; /* nothing happened: don't spin */
+        bool read_error = false;
         while (ev.event != BD_EVENT_NONE) {
+            read_error |= ev.event == BD_EVENT_READ_ERROR;
             /* a break before any data just starts this segment there */
             if (handle_event(nav, s, &ev, &wait) && s->got_data)
                 end = true;
@@ -641,6 +648,10 @@ static int next_unit(nav_stream_t *s)
         }
         if (wait)
             wait_a_little(nav, s);
+        else if (read_error)
+            /* a disc taken out fails every read, at once and for ever: let
+             * the player in, to cancel or ask where we are */
+            wait_ms(nav, s, 1);
     }
     pthread_mutex_unlock(&nav->lock);
     return ret;

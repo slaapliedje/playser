@@ -104,16 +104,20 @@ FocusScope {
         }
     }
 
-    function close() {
-        saveResume()
-        if (navigating)
-            nav.close() // stops mpv too
-        else
+    // removed: the disc was taken out, so there's no position to read
+    // and nothing to go back to
+    function close(removed) {
+        if (!removed)
+            saveResume()
+        const wasNavigating = navigating
+        if (nav)
+            nav.close() // stops mpv too; also drops an open still under way
+        if (!wasNavigating)
             mpv.stop()
         active = false
         opening = false
         picker.visible = false
-        closed(!!entry.extra)
+        closed(!removed && !!entry.extra)
     }
 
     function showOsd() {

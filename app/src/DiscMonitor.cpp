@@ -140,7 +140,7 @@ void DiscMonitor::refresh()
         const ObjectMap objects = reply.value();
 
         // block device, label, object path, mount point and which disc per drive
-        struct Block { QString device, label, path, mountPoint, discId; };
+        struct Block { QString device, label, path, mountPoint, discId; qulonglong size = 0; };
         QHash<QString, Block> blocks;
         for (auto it = objects.cbegin(); it != objects.cend(); ++it) {
             const QVariantMap block = it.value().value(kBlockIface);
@@ -155,7 +155,8 @@ void DiscMonitor::refresh()
                                        block.value("IdLabel").toString(), it.key().path(),
                                        firstMountPoint(it.value().value(kFsIface).value("MountPoints")),
                                        QStringList{ block.value("IdLabel").toString(), block.value("IdUUID").toString(),
-                                                    block.value("Size").toString() }.join('|') });
+                                                    block.value("Size").toString() }.join('|'),
+                                       block.value("Size").toULongLong() });
         }
 
         QVariantList drives;
@@ -168,7 +169,10 @@ void DiscMonitor::refresh()
             const QString path = it.key().path();
             const Block block = blocks.value(path);
             const QString &device = block.device;
-            const QString kind = discKind(drive);
+            // a disc taken out while a player holds the drive open keeps
+            // MediaAvailable (and Media) set; only the device's size drops
+            const bool ejected = !block.path.isEmpty() && block.size == 0;
+            const QString kind = ejected ? QStringLiteral("none") : discKind(drive);
 
             QVariantMap d;
             d["path"] = path;
@@ -176,7 +180,7 @@ void DiscMonitor::refresh()
                                       drive.value("Model").toString().simplified() }
                              .join(' ').trimmed();
             d["device"] = device;
-            d["hasMedia"] = drive.value("MediaAvailable").toBool();
+            d["hasMedia"] = drive.value("MediaAvailable").toBool() && !ejected;
             d["kind"] = kind;
             d["label"] = block.label;
             d["block"] = block.path;

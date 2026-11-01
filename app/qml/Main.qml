@@ -78,10 +78,29 @@ FocusScope {
     // 3D glasses connected: a 3D logo, standing out of the screen in 3D mode
     StereoBadge { mpv: root.mpv; shown: home.visible && root.mpv.stereoDisplay }
     SystemCheck { id: system }
-    // a newly inserted disc lets MakeMKV say whether the drive reads 4K UHD
+    // the disc d was taken out of its drive (swapping discs takes it out
+    // first)
+    function discGone(d) {
+        if (!d || !d.device)
+            return false
+        const now = discs.drives.find(x => x.device === d.device)
+        return !!now && !now.hasMedia // not found: an image or folder
+    }
     Connections {
         target: discs
-        function onDrivesChanged() { if (!player.active) system.checkUhdDrives() }
+        function onDrivesChanged() {
+            // ejected while open: back home, letting go of the drive for
+            // the next disc
+            if (player.active && root.discGone(player.drive))
+                player.close(true)
+            if (discScreen.visible && root.discGone(discScreen.drive))
+                discScreen.close()
+            if (root.discGone(root.menuDrive))
+                root.menuDrive = null
+            // a newly inserted disc lets MakeMKV say whether the drive reads 4K UHD
+            if (!player.active)
+                system.checkUhdDrives()
+        }
     }
     Settings {
         id: settings

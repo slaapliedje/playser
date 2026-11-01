@@ -53,6 +53,10 @@ FocusScope {
             list.positionViewAtIndex(list.currentIndex, ListView.Contain)
             return
         }
+        close()
+    }
+
+    function close() {
         focus = false
         visible = false
         closed()
