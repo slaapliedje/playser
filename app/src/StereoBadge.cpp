@@ -14,9 +14,9 @@ namespace {
 constexpr int kBadgeOverlay = 2;
 // the block's depth (behind the face, down and right), as a share of its height
 constexpr double kExtrusion = 0.14;
-// at the front, as a share of one eye's width: about 22 px at 1920, a
+// at the front, as a share of one eye's width: about 40 px at 1920, a
 // comfortable pop-out
-constexpr double kFrontDisparity = 0.0115;
+constexpr double kFrontDisparity = 0.021;
 
 } // namespace
 
