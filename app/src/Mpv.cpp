@@ -334,11 +334,13 @@ void Mpv::setSideBySide(const QSize &size)
     applyStereo();
 }
 
-void Mpv::setStereoVideo(bool on)
+void Mpv::setStereoVideo(bool on, bool baseRight)
 {
-    if (on == m_stereoVideo)
+    baseRight &= on;
+    if (on == m_stereoVideo && baseRight == m_baseRight)
         return;
     m_stereoVideo = on;
+    m_baseRight = baseRight;
     applyStereo();
 }
 
@@ -361,6 +363,8 @@ void Mpv::applyStereo()
         }
     };
     set("vd", m_stereoVideo ? "libedge264mvc" : "");
+    // applies when the decoder starts (the next file)
+    set("vd-lavc-o", m_baseRight ? "base_view_right=1" : "");
     set("hwdec", m_stereoVideo ? "no" : flat ? "auto-copy-safe" : "auto-safe");
     set("vf", flat ? "lavfi=[split[l][r];[l][r]hstack]" : "");
     const bool crop = m_stereoVideo && !sideBySide() && !m_videoSize.isEmpty();

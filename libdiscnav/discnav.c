@@ -144,6 +144,11 @@ bool discnav_has_stereo(discnav_t *nav)
     return nav->be->has_stereo && nav->be->has_stereo(nav->impl);
 }
 
+bool discnav_stereo_base_right(discnav_t *nav)
+{
+    return nav->be->stereo_base_right && nav->be->stereo_base_right(nav->impl);
+}
+
 void discnav_set_stereo(discnav_t *nav, bool on)
 {
     if (nav->be->set_stereo)

@@ -71,8 +71,9 @@ public:
     // (flat), and stereo video (setStereoVideo) is shown as it is.
     void setSideBySide(const QSize &size);
     bool sideBySide() const { return !m_sbsSize.isEmpty(); }
-    // The video being loaded is full side-by-side 3D (libedge264mvc's output).
-    void setStereoVideo(bool on);
+    // The video being loaded is 3D (H.264 MVC), decoded side by side by
+    // libedge264mvc; baseRight: its base view is the right eye.
+    void setStereoVideo(bool on, bool baseRight = false);
     // A display that can show 3D is connected (XR glasses, in 2D or 3D mode).
     void setStereoDisplay(bool on) { m_stereoDisplay = on; }
     bool stereoDisplay() const { return m_stereoDisplay; }
@@ -164,6 +165,7 @@ private:
     bool m_fullscreen = false; // asked for at startup
     QSize m_sbsSize;
     bool m_stereoVideo = false;
+    bool m_baseRight = false;
     bool m_stereoDisplay = false;
     QHash<QString, QString> m_stereoOptions; // as last set by applyStereo
     QSize m_videoDisplay; // the video's display size (aspect applied)

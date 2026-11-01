@@ -200,6 +200,9 @@ bool discnav_has_stereo(discnav_t *nav);
  * the same PES (PID 0x1011, for an MVC decoder); else the base view only.
  * Costs reading a second clip alongside (about 40% more data). */
 void discnav_set_stereo(discnav_t *nav, bool on);
+/* Blu-ray 3D: the current playlist's base view is the right eye (its MVC
+ * base view flag; the dependent view is then the left eye). */
+bool discnav_stereo_base_right(discnav_t *nav);
 
 #ifdef __cplusplus
 }

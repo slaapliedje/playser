@@ -36,6 +36,7 @@ typedef struct {
     bool (*render_overlay)(nav_impl_t *nav, uint8_t *rgba, int w, int h);
     void (*set_stereo)(nav_impl_t *nav, bool on);  /* NULL: no 3D */
     bool (*has_stereo)(nav_impl_t *nav);
+    bool (*stereo_base_right)(nav_impl_t *nav);
 } nav_backend_t;
 
 nav_impl_t *dvd_open(const char *device, const char *lang,

@@ -414,7 +414,7 @@ void DiscNav::load()
     // eye while the glasses show 2D
     const bool stereo = m_mpv->stereoDisplay() && discnav_has_stereo(m_ctx->nav);
     discnav_set_stereo(m_ctx->nav, stereo);
-    m_mpv->setStereoVideo(stereo);
+    m_mpv->setStereoVideo(stereo, discnav_stereo_base_right(m_ctx->nav));
     QStringList options = discnav_format(m_ctx->nav) == DISCNAV_BLURAY ? kBdSegmentOptions : kDvdSegmentOptions;
     // the dependent view is read in chunks of ~5 s of film, during which
     // the stream waits about a second: read further ahead than that

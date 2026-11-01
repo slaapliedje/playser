@@ -717,6 +717,14 @@ static void bdn_set_stereo(nav_impl_t *nav, bool on)
     pthread_mutex_unlock(&nav->lock);
 }
 
+static bool bdn_stereo_base_right(nav_impl_t *nav)
+{
+    pthread_mutex_lock(&nav->lock);
+    bool right = nav->info && nav->info->mvc_base_view_r_flag;
+    pthread_mutex_unlock(&nav->lock);
+    return right;
+}
+
 static bool bdn_has_stereo(nav_impl_t *nav)
 {
     pthread_mutex_lock(&nav->lock);
@@ -1153,4 +1161,5 @@ const nav_backend_t bd_backend = {
     .render_overlay = bdn_render_overlay,
     .set_stereo = bdn_set_stereo,
     .has_stereo = bdn_has_stereo,
+    .stereo_base_right = bdn_stereo_base_right,
 };

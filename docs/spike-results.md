@@ -382,11 +382,14 @@ Product implications:
   the images don't fuse. A **3840x1080 window** (`geometry=3840x1080`,
   not fullscreen) is shown 1:1 (`gamescopectl screenshot` 3840x1080): each
   eye gets its full 1920x1080 view.
-- Eye order, checked by the user with generated test images (labelled
-  eyes, a red square in front and a green one behind): left half = left
-  eye. The Hobbit's 3D playlists set `mvc_base_view_r_flag` 1, yet base
-  view on the left is correct; don't swap from that flag until another
-  disc explains it (libedge264mvc keeps a `base_view_right` option).
+- Eye order: the glasses show the left half to the left eye (checked by
+  the user with generated test images: labelled eyes, a red square in
+  front, a green one behind). The disc's playlist flag
+  (`mvc_base_view_r_flag`) is right: The Hobbit sets it, and with the base
+  view on the left its depth looked inverted in the strongest scenes; on
+  the right it looks right (the earlier film comparisons ran while the
+  window geometry was still wrong). Playser takes it from the playlist
+  (`discnav_stereo_base_right`, libedge264mvc's `base_view_right`).
 - mpv only uses the decoder with `vd=libedge264mvc` and `hwdec=no` (with
   hwdec it swaps in the hardware h264 decoder: one eye). A raw `.264`
   needs `demuxer-lavf-format=h264`.
