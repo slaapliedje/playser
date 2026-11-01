@@ -119,6 +119,7 @@ FocusScope {
         visible: !player.active
         monitor: discs
         check: system
+        stereoDisplay: root.mpv.stereoDisplay
         focus: !player.active
         onSetupRequested: root.showSetup()
         onPlayRequested: drive => {

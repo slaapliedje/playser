@@ -7,6 +7,8 @@ FocusScope {
 
     required property DiscMonitor monitor
     property SystemCheck check
+    // 3D glasses connected: a 3D disc plays in 3D
+    property bool stereoDisplay: false
     signal playRequested(var drive)
     signal setupRequested()
 
@@ -100,7 +102,7 @@ FocusScope {
         // a 4K disc in a drive MakeMKV can't read them with
         readonly property bool uhdUnsupported: disc.format === "UHD" && !!root.check
             && (root.check.uhdDrives[drive.device] || {}).state === "no"
-        readonly property string kindLabel: disc.format === "UHD" ? "4K UHD" : disc.stereo ? "Blu-ray 3D" : ({
+        readonly property string kindLabel: disc.format === "UHD" ? "4K UHD" : disc.stereo ? (root.stereoDisplay ? "Blu-ray 3D" : "Blu-ray 3D  ·  plays in 2D") : ({
             "bluray": "Blu-ray", "dvd": "DVD", "cd": "CD", "none": "No disc", "unknown": "Disc"
         })[drive.kind] || drive.kind
 

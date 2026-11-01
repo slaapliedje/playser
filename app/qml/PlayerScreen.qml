@@ -308,6 +308,7 @@ FocusScope {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Opening " + (root.drive && root.drive.disc && root.drive.disc.format === "UHD" ? "4K UHD"
+                                    : root.drive && root.drive.disc && root.drive.disc.stereo ? "Blu-ray 3D"
                                     : { "bluray": "Blu-ray", "dvd": "DVD" }[root.drive ? root.drive.kind : ""] || "disc")
                       + ".".repeat(dots.count)
                 color: Theme.text
