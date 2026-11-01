@@ -6,13 +6,17 @@ surround sound sent to your receiver as-is if you like.
 
 Early days: it runs on the author's SteamOS box and desktop, and the discs it
 has been tried with are listed in [docs/tested-discs.md](docs/tested-discs.md).
-There are no releases yet.
+Flatpak bundles are on the [releases page](https://github.com/slaapliedje/playser/releases).
 
 - **Discs:** DVD menus through libdvdnav; Blu-ray menus (HDMV and BD-J)
   through libbluray; both by way of [libdiscnav](libdiscnav/), our menu
   library for libmpv players.
 - **Playback:** libmpv with `gpu-next`, HDR10 under gamescope, audio
   passthrough (Dolby, DTS, TrueHD, DTS-HD).
+- **3D:** Blu-ray 3D on XR glasses (VITURE) in full side-by-side, decoded
+  with [edge264-mvc](https://github.com/jens-duttke/edge264-mvc); Playser
+  follows the glasses between 2D and 3D and draws its interface for each
+  eye.
 - **Disc info:** titles, episodes and art from [TheDiscDB](https://thediscdb.com).
 - **Controller:** SDL3 and Steam Input; the whole UI works from a gamepad.
 

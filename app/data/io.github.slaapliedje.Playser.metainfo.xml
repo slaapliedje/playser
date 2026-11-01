@@ -20,6 +20,7 @@
     <ul>
       <li>DVD and Blu-ray menus, including Java (BD-J) menus</li>
       <li>4K UHD Blu-ray in HDR10</li>
+      <li>Blu-ray 3D on XR glasses such as VITURE, in full side-by-side</li>
       <li>Surround sound decoded, or sent to your receiver as-is (Dolby Digital, TrueHD, DTS-HD Master Audio)</li>
       <li>Disc titles, episode lists and art from TheDiscDB, with Play all for TV discs</li>
       <li>Picks up where you left off</li>
@@ -33,6 +34,11 @@
     </p>
   </description>
   <releases>
+    <release version="0.2.0" date="2026-10-31">
+      <description>
+        <p>Blu-ray 3D on XR glasses (VITURE): both eyes decoded, followed live as the glasses switch between 2D and 3D, with the menus and controls shown to each eye and sound through the glasses. Disc menus that start without video now show.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-10-31">
       <description>
         <p>First release: DVD and Blu-ray menus, 4K UHD with HDR, audio passthrough, disc titles and episodes from TheDiscDB.</p>
