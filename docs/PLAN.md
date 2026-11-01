@@ -516,6 +516,18 @@ Hobbit* 3D; the 3D TVs (an LG and a Panasonic plasma) come later.
 - ✅ **Spike 0f** (2026-10-31): edge264-mvc decodes the Hobbit's MVC on
   the Go 2 at 3.4x real time on one core; the drive reads the SSIF at
   1.45x the film's bitrate (docs/spike-results.md 0f).
+- ✅ **Blu-ray 3D on XR glasses** (2026-10-31, Go 2 + VITURE Pro, *The
+  Hobbit* from its BD-J menus): FFmpeg decoder libedge264mvc (our patch,
+  edge264-mvc) outputs full side-by-side; libdiscnav (mvc.c) merges the
+  dependent clip into the stream; eye order from the playlist's base view
+  flag; glasses detected by EDID (3D mode: 3840x1080 only) and followed
+  live (window 3840x1080, UI and overlays once per eye, 2D video shown to
+  both eyes, 3D video cropped to one eye in 2D mode); sound through the
+  glasses; seeks resume in 2-3 s; a floating 3D logo on the home screen.
+  libbluray patch: BD-J S3D configurations (Warner's 3D menus).
+- ⬜ 3D TVs (half side-by-side / top-and-bottom), subtitles at the disc's
+  depth, anaglyph, 3D files; a 3D on/off setting; switching VITURE glasses
+  to 3D from the app (closed SDK; the Pro's protocol is unknown).
 Requested by a user. Test gear: passive and active 3D glasses, VR
 headsets, VITURE XR glasses.
 - **Decoding:** 3D Blu-rays carry the second eye as H.264 MVC

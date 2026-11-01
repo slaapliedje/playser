@@ -396,3 +396,23 @@ Product implications:
 - In 3D mode a 2D interface is split between the eyes and looks flipped
   with both open: the UI must be drawn once per eye whenever the display
   is side by side.
+
+### 0f, part 3 — 3D from the disc (2026-10-31, Go 2)
+
+- libdiscnav's `mvc.c` reads the dependent clip (from the playlist's SS
+  sub-path) beside libbluray's base view in 8 MB chunks and merges each
+  picture's dependent access unit into its base PES. Pitfalls found: a
+  chunk of a still scene holds hundreds of pictures (a fixed queue of 256
+  dropped needed ones: out-of-order frames, stalls); mpv must read 4 s
+  ahead (the stream waits ~1 s per chunk); a search that fails must back
+  off (searching per picture starved the stream in the menus).
+- After a seek an interpolation search finds the dependent picture in
+  2-3 probes: playback resumes in 2-3 s.
+- libbluray as a 3D player (profile 5, set by bd_open for a 3D disc) built
+  plain HGraphicsConfiguration objects; Warner's menus cast them to
+  HGraphicsConfigurationS3D and crashed in their 3D check, so only the
+  background loop played. In a 2D profile the menu shows but this disc
+  refuses to play ("doesn't work in 2D"). Fixed by
+  `flatpak/patches/libbluray-s3d-configurations.patch`.
+- A BD-J menu can come with no video at all: mpv waits for data, so the
+  opening screen must give way when the menu's graphics appear.
