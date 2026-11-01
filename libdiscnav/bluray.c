@@ -663,7 +663,7 @@ static int64_t bdn_stream_read(nav_stream_t *s, void *buf, uint64_t n)
             size_t got = mvc_take(s->mvc, buf, n);
             if (got) {
                 static FILE *dump;
-                if (!dump && getenv("DISCNAV_MVC_DUMP"))
+                if (!dump && getenv("DISCNAV_MVC_DUMP") && *getenv("DISCNAV_MVC_DUMP"))
                     dump = fopen(getenv("DISCNAV_MVC_DUMP"), "wb");
                 if (dump)
                     fwrite(buf, 1, got, dump);
@@ -1071,7 +1071,7 @@ static nav_impl_t *open_disc(const char *device, const char *lang, bool menus,
     bd_set_player_setting_str(nav->bd, BLURAY_PLAYER_SETTING_PG_LANG, l);
     bd_set_player_setting_str(nav->bd, BLURAY_PLAYER_SETTING_COUNTRY_CODE, "us");
     bd_set_player_setting(nav->bd, BLURAY_PLAYER_SETTING_REGION_CODE, 1); /* A */
-    if (getenv("DISCNAV_BD_2D")) {
+    if (getenv("DISCNAV_BD_2D") && *getenv("DISCNAV_BD_2D")) {
         /* testing: undo libbluray's 3D profile (bd_open sets it for a 3D
          * disc): a 2D player */
         bd_set_player_setting(nav->bd, BLURAY_PLAYER_SETTING_OUTPUT_PREFER, BLURAY_OUTPUT_PREFER_2D);

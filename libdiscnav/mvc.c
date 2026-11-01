@@ -42,7 +42,7 @@ static bool debug_on(void)
 {
     static int on = -1;
     if (on < 0)
-        on = getenv("DISCNAV_MVC_DEBUG") != NULL;
+        on = getenv("DISCNAV_MVC_DEBUG") && *getenv("DISCNAV_MVC_DEBUG");
     return on;
 }
 #define DEBUG(...) do { if (debug_on()) fprintf(stderr, "mvc: " __VA_ARGS__); } while (0)

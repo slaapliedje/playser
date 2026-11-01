@@ -1,0 +1,68 @@
+diff -ru a/src/libbluray/bdj/java/org/blurayx/s3d/ui/HBackgroundConfigurationS3D.java b/src/libbluray/bdj/java/org/blurayx/s3d/ui/HBackgroundConfigurationS3D.java
+--- a/src/libbluray/bdj/java/org/blurayx/s3d/ui/HBackgroundConfigurationS3D.java	2026-10-31 19:30:56.685413504 -0600
++++ b/src/libbluray/bdj/java/org/blurayx/s3d/ui/HBackgroundConfigurationS3D.java	2026-10-31 19:30:56.706356586 -0600
+@@ -27,6 +27,10 @@
+ import org.havi.ui.HStillImageBackgroundConfiguration;
+ 
+ public class HBackgroundConfigurationS3D extends HStillImageBackgroundConfiguration {
++    public HBackgroundConfigurationS3D(org.havi.ui.HBackgroundConfigTemplate hbct, java.awt.Color color) {
++        super(hbct, color);
++    }
++
+ 
+     public void displayImage(HBackgroundImage leftImage,
+                              HBackgroundImage rightImage)
+diff -ru a/src/libbluray/bdj/java/org/blurayx/s3d/ui/HGraphicsConfigurationS3D.java b/src/libbluray/bdj/java/org/blurayx/s3d/ui/HGraphicsConfigurationS3D.java
+--- a/src/libbluray/bdj/java/org/blurayx/s3d/ui/HGraphicsConfigurationS3D.java	2026-10-31 19:30:56.685422988 -0600
++++ b/src/libbluray/bdj/java/org/blurayx/s3d/ui/HGraphicsConfigurationS3D.java	2026-10-31 19:30:56.706336266 -0600
+@@ -24,6 +24,10 @@
+ import org.havi.ui.HPermissionDeniedException;
+ 
+ public class HGraphicsConfigurationS3D extends HGraphicsConfiguration {
++    public HGraphicsConfigurationS3D(org.havi.ui.HGraphicsConfigTemplate hgct) {
++        super(hgct);
++    }
++
+     public int getOffsetValue() {
+         return 0;
+     }
+diff -ru a/src/libbluray/bdj/java/org/havi/ui/HBackgroundDevice.java b/src/libbluray/bdj/java/org/havi/ui/HBackgroundDevice.java
+--- a/src/libbluray/bdj/java/org/havi/ui/HBackgroundDevice.java	2026-10-31 19:30:56.686487206 -0600
++++ b/src/libbluray/bdj/java/org/havi/ui/HBackgroundDevice.java	2026-10-31 19:30:56.706398667 -0600
+@@ -41,7 +41,8 @@
+                 hbct = new HBackgroundConfigTemplate();
+             }
+             HScreenConfigTemplate.initDefaultConfigTemplate(hbct, i);
+-            hbcArray[i] = new HStillImageBackgroundConfiguration(hbct, new Color(0, 0, 0, 0));
++            hbcArray[i] = is_p5 && !is_p6 ? new org.blurayx.s3d.ui.HBackgroundConfigurationS3D(hbct, new Color(0, 0, 0, 0))
++                                          : new HStillImageBackgroundConfiguration(hbct, new Color(0, 0, 0, 0));
+         }
+         hbc = hbcArray[0];
+     }
+diff -ru a/src/libbluray/bdj/java/org/havi/ui/HGraphicsConfiguration.java b/src/libbluray/bdj/java/org/havi/ui/HGraphicsConfiguration.java
+--- a/src/libbluray/bdj/java/org/havi/ui/HGraphicsConfiguration.java	2026-10-31 19:30:56.686600388 -0600
++++ b/src/libbluray/bdj/java/org/havi/ui/HGraphicsConfiguration.java	2026-10-31 19:30:56.706305705 -0600
+@@ -33,7 +33,7 @@
+     protected HGraphicsConfiguration() {
+     }
+ 
+-    HGraphicsConfiguration(HGraphicsConfigTemplate hgct) {
++    protected HGraphicsConfiguration(HGraphicsConfigTemplate hgct) {
+         super(hgct);
+         this.hgct = hgct;
+     }
+diff -ru a/src/libbluray/bdj/java/org/havi/ui/HGraphicsDevice.java b/src/libbluray/bdj/java/org/havi/ui/HGraphicsDevice.java
+--- a/src/libbluray/bdj/java/org/havi/ui/HGraphicsDevice.java	2026-10-31 19:30:56.686609238 -0600
++++ b/src/libbluray/bdj/java/org/havi/ui/HGraphicsDevice.java	2026-10-31 19:30:56.706378262 -0600
+@@ -44,7 +44,10 @@
+                 hgct = new HGraphicsConfigTemplate();
+             }
+             HScreenConfigTemplate.initDefaultConfigTemplate(hgct, i);
+-            hgcArray[i] = new HGraphicsConfiguration(hgct);
++            /* a 3D (profile 5) player's configurations are S3D ones: discs
++             * cast them (e.g. to set the graphics offset) */
++            hgcArray[i] = is_p5 && !is_p6 ? new org.blurayx.s3d.ui.HGraphicsConfigurationS3D(hgct)
++                                          : new HGraphicsConfiguration(hgct);
+         }
+         hgc = hgcArray[0];
+     }

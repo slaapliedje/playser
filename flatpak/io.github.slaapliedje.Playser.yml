@@ -97,6 +97,11 @@ modules:
       - type: archive
         url: https://download.videolan.org/pub/videolan/libbluray/1.5.0/libbluray-1.5.0.tar.xz
         sha256: f676408e91a5d321abf8b8d4dfdae36205c297dab5c54c3ec519639025f474a2
+      # BD-J on a 3D player: graphics and background configurations are
+      # the S3D classes, which discs cast to (Warner's 3D menus crash on a
+      # ClassCastException and never show)
+      - type: patch
+        path: patches/libbluray-s3d-configurations.patch
 
   - name: libass
     config-opts:
