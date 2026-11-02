@@ -50,7 +50,8 @@ FocusScope {
     // (DiscMonitor.ensureMounted); if it won't mount, the film plays.
     property var menuDrive: null
     function openMenus(drive) {
-        if (drive.kind !== "bluray") {
+        // a folder or image needs no mounting
+        if (drive.kind !== "bluray" || drive.file) {
             player.playMenu(drive)
             return
         }
@@ -143,30 +144,60 @@ FocusScope {
         stereoDisplay: root.mpv.stereoDisplay
         focus: !player.active
         onSetupRequested: root.showSetup()
+        onFilesRequested: filesScreen.open()
         onPlayRequested: drive => {
-            system.stopUhdChecks() // MakeMKV needs the drive to itself
-            // a Blu-ray can't play without MakeMKV, nor a 4K disc without a
-            // drive it can read them with: say why instead of failing
-            if (drive.kind === "bluray") {
-                system.refresh()
-                const uhd = system.uhdDrives[drive.device] || {}
-                if (!system.ready || (drive.disc && drive.disc.format === "UHD" && uhd.state === "no")) {
-                    root.showSetup()
-                    return
-                }
-            }
-            const episodes = drive.disc && drive.disc.episodes ? drive.disc.episodes : []
-            const extras = drive.disc && drive.disc.extras ? drive.disc.extras : []
-            const resume = Resume.get(drive.contentHash || drive.label)
-            // with disc menus off, the disc's page still offers its menu
-            const menus = drive.kind === "dvd" || drive.kind === "bluray"
-            if (episodes.length > 1 || extras.length || resume || (menus && !settings.discMenus))
-                discScreen.open(drive)
-            else if (menus && settings.discMenus)
-                root.openMenus(drive) // a disc starts with its own menus
-            else
-                player.play(drive)
+            root.fromFiles = false
+            root.start(drive)
         }
+    }
+
+    // played from the file browser: back there afterwards
+    property bool fromFiles: false
+    function backFromPlaying() {
+        if (fromFiles)
+            filesScreen.reopen()
+        else
+            home.forceActiveFocus()
+    }
+
+    // a disc, or a video, disc folder or image from the file browser
+    // (drive.file): its page if there's a choice to make, else play it
+    function start(drive) {
+        if (!drive.file)
+            system.stopUhdChecks() // MakeMKV needs the drive to itself
+        // a Blu-ray can't play without MakeMKV, nor a 4K disc without a
+        // drive it can read them with: say why instead of failing (a
+        // folder or image may be decrypted already: let it try)
+        if (drive.kind === "bluray" && !drive.file) {
+            system.refresh()
+            const uhd = system.uhdDrives[drive.device] || {}
+            if (!system.ready || (drive.disc && drive.disc.format === "UHD" && uhd.state === "no")) {
+                root.showSetup()
+                return
+            }
+        }
+        const episodes = drive.disc && drive.disc.episodes ? drive.disc.episodes : []
+        const extras = drive.disc && drive.disc.extras ? drive.disc.extras : []
+        const resume = Resume.get(drive.contentHash || drive.label)
+        // with disc menus off, the disc's page still offers its menu
+        const menus = drive.kind === "dvd" || drive.kind === "bluray"
+        if (episodes.length > 1 || extras.length || resume || (menus && !settings.discMenus))
+            discScreen.open(drive)
+        else if (menus && settings.discMenus)
+            root.openMenus(drive) // a disc starts with its own menus
+        else
+            player.play(drive)
+    }
+
+    FilesScreen {
+        id: filesScreen
+        anchors.fill: parent
+        onPlayRequested: drive => {
+            visible = false
+            root.fromFiles = true
+            root.start(drive)
+        }
+        onClosed: home.forceActiveFocus()
     }
 
     DiscScreen {
@@ -195,7 +226,7 @@ FocusScope {
             visible = false
             player.play(drive, [{ url: extra.url, title: extra.title, extra: true }], 0, 0)
         }
-        onClosed: home.forceActiveFocus()
+        onClosed: root.backFromPlaying()
     }
 
     SetupScreen {
@@ -224,7 +255,7 @@ FocusScope {
             if (wasExtra)
                 discScreen.reopen()
             else
-                home.forceActiveFocus()
+                root.backFromPlaying()
         }
     }
 }

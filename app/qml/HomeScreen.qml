@@ -11,6 +11,8 @@ FocusScope {
     property bool stereoDisplay: false
     signal playRequested(var drive)
     signal setupRequested()
+    // the file browser (the card after the drives)
+    signal filesRequested()
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Menu) {
@@ -45,7 +47,7 @@ FocusScope {
         orientation: ListView.Horizontal
         spacing: Theme.spacing * 1.5
         focus: true
-        model: root.drives
+        model: root.drives.concat([{ files: true }])
         keyNavigationWraps: false
         highlightMoveDuration: 150
 
@@ -58,13 +60,15 @@ FocusScope {
 
         Keys.onReturnPressed: {
             const d = root.drives[currentIndex]
-            if (d && d.url)
+            if (!d)
+                root.filesRequested()
+            else if (d.url)
                 root.playRequested(d)
         }
     }
 
     Text {
-        anchors.centerIn: parent
+        anchors { left: parent.left; bottom: hints.top; margins: Theme.margin }
         visible: root.drives.length === 0
         text: monitor.available ? "No optical drive found" : "Can't reach udisks2"
         color: Theme.textDim
@@ -76,7 +80,7 @@ FocusScope {
         anchors { left: parent.left; bottom: parent.bottom; margins: Theme.margin }
         hints: [
             { buttons: ["south"], text: "Play" },
-            { buttons: ["dpadH"], text: "Choose drive" },
+            { buttons: ["dpadH"], text: "Choose" },
             { buttons: ["start"], text: "Setup" },
             { buttons: ["east"], text: "Exit" },
         ]
@@ -96,13 +100,14 @@ FocusScope {
         property var drive
         property bool focused: false
 
-        readonly property bool playable: !!drive.url
+        readonly property bool files: !!drive.files
+        readonly property bool playable: !!drive.url || files
         readonly property var disc: drive.disc || ({})
         readonly property bool known: !!disc.title
         // a 4K disc in a drive MakeMKV can't read them with
         readonly property bool uhdUnsupported: disc.format === "UHD" && !!root.check
             && (root.check.uhdDrives[drive.device] || {}).state === "no"
-        readonly property string kindLabel: disc.format === "UHD" ? "4K UHD" : disc.stereo ? (root.stereoDisplay ? "Blu-ray 3D" : "Blu-ray 3D  ·  plays in 2D") : ({
+        readonly property string kindLabel: files ? "Files" : disc.format === "UHD" ? "4K UHD" : disc.stereo ? (root.stereoDisplay ? "Blu-ray 3D" : "Blu-ray 3D  ·  plays in 2D") : ({
             "bluray": "Blu-ray", "dvd": "DVD", "cd": "CD", "none": "No disc", "unknown": "Disc"
         })[drive.kind] || drive.kind
 
@@ -164,17 +169,18 @@ FocusScope {
             }
             Text {
                 width: parent.width
-                text: !drive.hasMedia ? "Insert a disc"
+                text: files ? "Videos and disc images"
+                      : !drive.hasMedia ? "Insert a disc"
                       : known ? disc.title
                       : (Theme.titleFromLabel(drive.label) || "Untitled disc")
-                color: drive.hasMedia ? Theme.text : Theme.textDim
+                color: drive.hasMedia || files ? Theme.text : Theme.textDim
                 font.pixelSize: Theme.fontLarge
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
             Text {
                 width: parent.width
-                visible: drive.hasMedia && (known || drive.identifying)
+                visible: !!drive.hasMedia && (known || !!drive.identifying)
                 // the release name usually carries its year; add the film's if not
                 text: drive.identifying ? "Identifying…"
                       : (disc.year && !String(disc.release).includes(disc.year) ? disc.year + "  ·  " : "")
@@ -185,7 +191,8 @@ FocusScope {
             }
             Text {
                 width: parent.width
-                text: uhdUnsupported ? "This drive can't play 4K UHD discs"
+                text: files ? "From your Videos and Home folders, SD cards and USB drives"
+                      : uhdUnsupported ? "This drive can't play 4K UHD discs"
                                      : drive.model + "  ·  " + drive.device
                 color: uhdUnsupported ? Theme.warning : Theme.textDim
                 font.pixelSize: Theme.fontSmall

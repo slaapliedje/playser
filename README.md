@@ -17,6 +17,9 @@ Flatpak bundles are on the [releases page](https://github.com/slaapliedje/playse
   with [edge264-mvc](https://github.com/jens-duttke/edge264-mvc); Playser
   follows the glasses between 2D and 3D and draws its interface for each
   eye.
+- **Files:** videos, DVD and Blu-ray folders (VIDEO_TS, BDMV) and ISO
+  images from your Videos and Home folders, SD cards and USB drives; disc
+  folders and images play with their menus, like the disc.
 - **Disc info:** titles, episodes and art from [TheDiscDB](https://thediscdb.com).
 - **Controller:** SDL3 and Steam Input; the whole UI works from a gamepad.
 

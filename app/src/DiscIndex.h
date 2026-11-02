@@ -51,4 +51,11 @@ QVariantMap lookup(const QString &contentHash);
 // and DVDs have none. Reads the disc: call it off the GUI thread.
 QVariantMap discMeta(DiscFs &fs);
 
+// Everything known about a disc: the catalogue entry with its titles
+// resolved (lookup, resolveTitles) when it is in the catalogue, plus what
+// the disc says about itself (discMeta: title if not catalogued, art,
+// format) and `stereo`. Sets *contentHash and *known. Reads the disc: call
+// it off the GUI thread.
+QVariantMap identify(DiscFs &fs, QString *contentHash, bool *known);
+
 } // namespace DiscIndex

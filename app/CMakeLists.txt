@@ -52,6 +52,7 @@ qt_add_qml_module(playser
         src/StereoBadge.h src/StereoBadge.cpp
         src/SystemCheck.h src/SystemCheck.cpp
         src/Gamepad.h src/Gamepad.cpp
+        src/MediaFiles.h src/MediaFiles.cpp
     QML_FILES
         qml/Main.qml
         qml/HomeScreen.qml
@@ -60,6 +61,7 @@ qt_add_qml_module(playser
         qml/Theme.qml
         qml/Resume.qml
         qml/DiscScreen.qml
+        qml/FilesScreen.qml
         qml/SetupScreen.qml
         qml/ButtonGlyph.qml
         qml/HintBar.qml

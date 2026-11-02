@@ -26,7 +26,9 @@ finish-args:
   - --filesystem=xdg-run/pipewire-0:ro
   - --device=all                        # /dev/sr*, GPU, gamepads
   - --system-talk-name=org.freedesktop.UDisks2
-  - --filesystem=/run/media:ro              # discs read through a mount when the device can't be
+  - --filesystem=/run/media:ro              # discs read through a mount when the device can't be; SD cards and USB drives (file browser)
+  - --filesystem=/media:ro                  # USB drives on desktops (file browser)
+  - --filesystem=home:ro                    # the user's videos (file browser)
   - --talk-name=org.freedesktop.ScreenSaver   # inhibit during playback
   # gamescope's Vulkan WSI layer talks to gamescope over this socket; without
   # it HDR swapchains fail ("Hooking has failed somewhere!")

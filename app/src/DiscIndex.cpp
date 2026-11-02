@@ -330,3 +330,25 @@ QVariantMap DiscIndex::discMeta(DiscFs &fs)
     }
     return meta;
 }
+
+QVariantMap DiscIndex::identify(DiscFs &fs, QString *contentHash, bool *known)
+{
+    const QString hash = DiscIndex::contentHash(fs);
+    QVariantMap disc = hash.isEmpty() ? QVariantMap() : lookup(hash);
+    *contentHash = hash;
+    *known = !disc.isEmpty();
+    if (*known)
+        resolveTitles(disc, fs);
+    // not in the catalogue: the title the disc gives itself (Blu-ray);
+    // its art either way
+    const QVariantMap meta = discMeta(fs);
+    if (!*known && meta.contains("title"))
+        disc.insert("title", meta.value("title"));
+    if (meta.contains("art"))
+        disc.insert("art", meta.value("art"));
+    if (!disc.contains("format") && meta.contains("format"))
+        disc.insert("format", meta.value("format"));
+    if (meta.contains("stereo"))
+        disc.insert("stereo", true);
+    return disc;
+}

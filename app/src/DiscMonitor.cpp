@@ -315,22 +315,9 @@ void DiscMonitor::identify(const QString &blockPath, const QString &device, cons
             });
             return;
         }
-        const QString hash = DiscIndex::contentHash(*fs);
-        QVariantMap disc = hash.isEmpty() ? QVariantMap() : DiscIndex::lookup(hash);
-        const bool known = !disc.isEmpty();
-        if (known)
-            DiscIndex::resolveTitles(disc, *fs);
-        // not in the catalogue: the title the disc gives itself (Blu-ray);
-        // its art either way
-        const QVariantMap meta = DiscIndex::discMeta(*fs);
-        if (!known && meta.contains("title"))
-            disc.insert("title", meta.value("title"));
-        if (meta.contains("art"))
-            disc.insert("art", meta.value("art"));
-        if (!disc.contains("format") && meta.contains("format"))
-            disc.insert("format", meta.value("format"));
-        if (meta.contains("stereo"))
-            disc.insert("stereo", true);
+        QString hash;
+        bool known = false;
+        const QVariantMap disc = DiscIndex::identify(*fs, &hash, &known);
         const QString source = fs->source();
         QMetaObject::invokeMethod(self, [self, blockPath, discId, mountPoint, source, hash, disc, known] {
             if (!self)
