@@ -34,6 +34,11 @@
     </p>
   </description>
   <releases>
+    <release version="0.3.0" date="2026-11-05">
+      <description>
+        <p>Play from Plex and Jellyfin servers, with resume points and watched marks kept on the server, and from your own files: videos, DVD and Blu-ray folders and ISO images. Ejecting the playing disc goes back home.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-10-31">
       <description>
         <p>Blu-ray 3D on XR glasses (VITURE): both eyes decoded, followed live as the glasses switch between 2D and 3D, with the menus and controls shown to each eye and sound through the glasses. Disc menus that start without video now show.</p>
