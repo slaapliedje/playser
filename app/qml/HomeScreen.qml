@@ -7,15 +7,16 @@ FocusScope {
 
     required property DiscMonitor monitor
     property SystemCheck check
-    property PlexClient plex
+    property MediaServer plex
+    property MediaServer jellyfin
     // 3D glasses connected: a 3D disc plays in 3D
     property bool stereoDisplay: false
     signal playRequested(var drive)
     signal setupRequested()
     // the file browser (the card after the drives)
     signal filesRequested()
-    // the Plex library (the card after Files)
-    signal plexRequested()
+    // a media server's library (the cards after Files)
+    signal libraryRequested(MediaServer server)
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Menu) {
@@ -50,7 +51,7 @@ FocusScope {
         orientation: ListView.Horizontal
         spacing: Theme.spacing * 1.5
         focus: true
-        model: root.drives.concat([{ files: true }, { plexCard: true }])
+        model: root.drives.concat([{ files: true }, { server: root.plex }, { server: root.jellyfin }])
         keyNavigationWraps: false
         highlightMoveDuration: 150
 
@@ -62,11 +63,11 @@ FocusScope {
         }
 
         Keys.onReturnPressed: {
-            const d = root.drives[currentIndex]
-            if (currentIndex === root.drives.length)
+            const d = model[currentIndex]
+            if (d.files)
                 root.filesRequested()
-            else if (!d)
-                root.plexRequested()
+            else if (d.server)
+                root.libraryRequested(d.server)
             else if (d.url)
                 root.playRequested(d)
         }
@@ -106,14 +107,16 @@ FocusScope {
         property bool focused: false
 
         readonly property bool files: !!drive.files
-        readonly property bool plexCard: !!drive.plexCard
-        readonly property bool playable: !!drive.url || files || plexCard
+        // a media server's library
+        readonly property MediaServer server: drive.server || null
+        readonly property bool library: !!server
+        readonly property bool playable: !!drive.url || files || library
         readonly property var disc: drive.disc || ({})
         readonly property bool known: !!disc.title
         // a 4K disc in a drive MakeMKV can't read them with
         readonly property bool uhdUnsupported: disc.format === "UHD" && !!root.check
             && (root.check.uhdDrives[drive.device] || {}).state === "no"
-        readonly property string kindLabel: plexCard ? "Plex" : files ? "Files" : disc.format === "UHD" ? "4K UHD" : disc.stereo ? (root.stereoDisplay ? "Blu-ray 3D" : "Blu-ray 3D  ·  plays in 2D") : ({
+        readonly property string kindLabel: library ? server.service : files ? "Files" : disc.format === "UHD" ? "4K UHD" : disc.stereo ? (root.stereoDisplay ? "Blu-ray 3D" : "Blu-ray 3D  ·  plays in 2D") : ({
             "bluray": "Blu-ray", "dvd": "DVD", "cd": "CD", "none": "No disc", "unknown": "Disc"
         })[drive.kind] || drive.kind
 
@@ -175,12 +178,12 @@ FocusScope {
             }
             Text {
                 width: parent.width
-                text: plexCard ? (root.plex && root.plex.serverName ? root.plex.serverName : "Your Plex library")
+                text: library ? (server.serverName || "Your " + server.service + " library")
                       : files ? "Videos and disc images"
                       : !drive.hasMedia ? "Insert a disc"
                       : known ? disc.title
                       : (Theme.titleFromLabel(drive.label) || "Untitled disc")
-                color: drive.hasMedia || files || plexCard ? Theme.text : Theme.textDim
+                color: drive.hasMedia || files || library ? Theme.text : Theme.textDim
                 font.pixelSize: Theme.fontLarge
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
@@ -198,8 +201,9 @@ FocusScope {
             }
             Text {
                 width: parent.width
-                text: plexCard ? (root.plex && root.plex.signedIn ? "Films and shows from your server"
-                                                                   : "Sign in with a code at plex.tv/link")
+                text: library ? (server.signedIn ? "Films and shows from your server"
+                                 : server.service === "Plex" ? "Sign in with a code at plex.tv/link"
+                                 : "Sign in to your Jellyfin server")
                       : files ? "From your Videos and Home folders, SD cards and USB drives"
                       : uhdUnsupported ? "This drive can't play 4K UHD discs"
                                      : drive.model + "  ·  " + drive.device

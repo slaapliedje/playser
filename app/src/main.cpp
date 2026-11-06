@@ -22,7 +22,7 @@
 
 #include "Gamepad.h"
 #include "Mpv.h"
-#include "PlexClient.h"
+#include "MediaServer.h"
 #include "UiRenderer.h"
 
 // SIGTERM (Steam's "Exit game") and SIGINT quit through the event loop, so
@@ -208,7 +208,7 @@ static int qtKeyForMpv(const QString &name)
 }
 
 // --script "2,down,enter,3,shot,quit": numbers wait (seconds), names press
-// keys, "shot" saves the UI layer and an mpv window screenshot, "quit"
+// keys ("type:abc" types), "shot" saves the UI layer and an mpv window screenshot, "quit"
 // exits. For headless UI tests.
 static void runScript(UiRenderer *ui, Mpv *mpv, QStringList steps, const QString &shotDir, int shot = 0)
 {
@@ -217,6 +217,7 @@ static void runScript(UiRenderer *ui, Mpv *mpv, QStringList steps, const QString
         { "right", Qt::Key_Right }, { "enter", Qt::Key_Return }, { "back", Qt::Key_Escape },
         { "menu", Qt::Key_Menu }, { "info", Qt::Key_I }, { "pgup", Qt::Key_PageUp },
         { "pgdn", Qt::Key_PageDown }, { "space", Qt::Key_Space }, { "title", Qt::Key_TopMenu },
+        { "x", Qt::Key_Backspace },
     };
     while (!steps.isEmpty()) {
         const QString step = steps.takeFirst().trimmed();
@@ -241,6 +242,9 @@ static void runScript(UiRenderer *ui, Mpv *mpv, QStringList steps, const QString
             return;
         } else if (keys.contains(step)) {
             ui->deliverKey(keys.value(step));
+        } else if (step.startsWith("type:")) { // a keyboard's typing
+            for (const QChar c : step.mid(5))
+                ui->deliverText(c);
         } else {
             qWarning("script: unknown step '%s'", qPrintable(step));
         }
@@ -308,7 +312,7 @@ int main(int argc, char *argv[])
             ui.deliverKey(key);
     });
 
-    PlexClient::installImageAuth(&engine);
+    MediaServer::installImageAuth(&engine);
     QQmlComponent component(&engine, "Playser", "Main");
     QObject *root = component.createWithInitialProperties({
         { "mpv", QVariant::fromValue(&mpv) }, { "gamepad", QVariant::fromValue(&gamepad) } });

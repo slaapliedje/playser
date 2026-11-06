@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
-#include <QJSValue>
-#include <QObject>
 #include <QTimer>
-#include <QVariant>
-#include <QtQml/qqmlregistration.h>
+#include <functional>
+#include "MediaServer.h"
 
-class QNetworkAccessManager;
-class QQmlEngine;
 class QNetworkReply;
 class QNetworkRequest;
 class QUrl;
@@ -21,78 +17,50 @@ class QUrlQuery;
 //
 // The account token is kept in the settings (group "plex") and never
 // logged; playback sends it as a header, not in the URL.
-class PlexClient : public QObject
+class PlexClient : public MediaServer
 {
     Q_OBJECT
     QML_ELEMENT
 
-    // "signedOut", "linking" (showing linkCode), "connecting", "ready",
-    // "error" (see message)
-    Q_PROPERTY(QString state READ state NOTIFY stateChanged)
-    Q_PROPERTY(QString linkCode READ linkCode NOTIFY stateChanged)
-    Q_PROPERTY(QString serverName READ serverName NOTIFY stateChanged)
-    Q_PROPERTY(QString message READ message NOTIFY stateChanged)
-    // has an account token (start() then connects without a code)
-    Q_PROPERTY(bool signedIn READ signedIn NOTIFY stateChanged)
-
 public:
     explicit PlexClient(QObject *parent = nullptr);
 
-    // Lets QML images load from the server: the engine's requests to it
-    // get the token as a header (kept out of image URLs, which get logged).
-    // Call before loading any QML.
-    static void installImageAuth(QQmlEngine *engine);
+    QString service() const override { return QStringLiteral("Plex"); }
+    bool signedIn() const override { return !m_userToken.isEmpty(); }
 
-    QString state() const { return m_state; }
-    QString linkCode() const { return m_linkCode; }
-    QString serverName() const { return m_serverName; }
-    QString message() const { return m_message; }
-    bool signedIn() const { return !m_userToken.isEmpty(); }
+    void start() override;
+    void cancelSignIn() override;
+    void signOut() override;
 
-    // signed in: find the server; else ask plex.tv for a code to enter
-    Q_INVOKABLE void start();
-    Q_INVOKABLE void cancelSignIn();
-    Q_INVOKABLE void signOut();
-
-    // GET a server path ("/library/sections"); callback(container) with
-    // the reply's MediaContainer, or callback(null, message)
-    Q_INVOKABLE void get(const QString &path, const QJSValue &callback);
-    // a poster or thumbnail (thumb: the item's thumb path) scaled by the
-    // server; installImageAuth() adds the token
-    Q_INVOKABLE QString imageUrl(const QString &thumb, int width, int height) const;
-    // A movie or episode (its Metadata) as a drive for the player:
-    // { url, label, kind: "plex", options (mpv: the token header),
-    //   ratingKey, plex: true }
-    Q_INVOKABLE QVariantMap playable(const QVariantMap &item) const;
-    // Playback progress for Plex's "continue watching": state "playing",
-    // "paused" or "stopped"
-    Q_INVOKABLE void report(const QString &ratingKey, const QString &state, double seconds, double duration);
-    // marks it watched
-    Q_INVOKABLE void scrobble(const QString &ratingKey);
-
-signals:
-    void stateChanged();
+    void libraries(const QJSValue &callback) override;
+    void continueWatching(const QJSValue &callback) override;
+    void items(const QString &libraryId, const QJSValue &callback) override;
+    void children(const QVariantMap &item, const QJSValue &callback) override;
+    void refresh(const QVariantMap &item, const QJSValue &callback) override;
+    void firstEpisode(const QVariantMap &show, const QJSValue &callback) override;
+    QString imageUrl(const QString &image, int width, int height) const override;
+    QVariantMap playable(const QVariantMap &item) const override;
+    void report(const QString &itemId, const QString &state, double seconds, double duration) override;
+    void scrobble(const QString &itemId) override;
 
 private:
-    void setState(const QString &state, const QString &message = {});
     QNetworkRequest request(const QUrl &url, const QString &token) const;
     void pollPin();
     void findServer();
     void tryConnections(const QVariantList &candidates, const QString &name, const QString &token);
+    // GET a server path; done(MediaContainer) or fails the callback
+    void get(const QString &path, const QJSValue &callback, const std::function<void(const QVariantMap &)> &done);
+    // a container's Metadata as items
+    void getItems(const QString &path, const QJSValue &callback);
     void serverGet(const QString &path, const QUrlQuery &query);
     void setServer(const QString &baseUrl, const QString &token);
 
-    QNetworkAccessManager *m_net;
-    QString m_state = QStringLiteral("signedOut");
-    QString m_message;
     QString m_clientId;
     QString m_userToken;
     // the chosen server: its address and the token for it
     QString m_baseUrl;
     QString m_serverToken;
-    QString m_serverName;
     // sign-in
-    QString m_linkCode;
     qint64 m_pinId = 0;
     QTimer m_pinPoll;
     int m_pinPolls = 0;

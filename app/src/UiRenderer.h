@@ -32,6 +32,8 @@ public:
     void setRootItem(QQuickItem *root);
     QQuickWindow *window() const { return m_window; }
     void deliverKey(int qtKey);
+    // a typed character (tests)
+    void deliverText(QChar c);
     // The last rendered UI frame (sRGB), for test screenshots.
     QImage lastFrame() const { return m_image; }
 

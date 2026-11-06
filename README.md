@@ -20,6 +20,10 @@ Flatpak bundles are on the [releases page](https://github.com/slaapliedje/playse
 - **Files:** videos, DVD and Blu-ray folders (VIDEO_TS, BDMV) and ISO
   images from your Videos and Home folders, SD cards and USB drives; disc
   folders and images play with their menus, like the disc.
+- **Media servers:** Plex (sign in with a code at plex.tv/link) and
+  Jellyfin (found on your network or by its address; Quick Connect or a
+  password). Films and shows play as they are, and resume points and
+  watched marks go back to the server.
 - **Disc info:** titles, episodes and art from [TheDiscDB](https://thediscdb.com).
 - **Controller:** SDL3 and Steam Input; the whole UI works from a gamepad.
 

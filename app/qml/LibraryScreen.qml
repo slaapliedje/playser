@@ -2,37 +2,44 @@
 import QtQuick
 import Playser
 
-// A Plex library: signing in (a code entered at plex.tv/link), then
-// "Continue watching" and the libraries, a poster grid of a library's
-// films or shows, a show's seasons and a season's episodes, and a page for
-// the film or episode to play (resume or from the beginning). B goes back
-// a page; Start signs out.
+// A media server's library (Plex, Jellyfin): signing in, then "Continue
+// watching" and the libraries, a poster grid of a library's films or shows,
+// a show's seasons and a season's episodes, and a page for the film or
+// episode to play (resume or from the beginning). B goes back a page; Start
+// signs out.
 FocusScope {
     id: root
 
-    required property PlexClient plex
-    // drive: PlexClient.playable(); queue: [{ url, title, ratingKey,
-    // duration }] (a season's episodes from the one chosen); start: seconds
+    required property MediaServer server
+    // the server's own sign-in steps (states this screen doesn't know)
+    property Component signIn: null
+    // drive: MediaServer.playable(); queue: [{ url, title, itemId }] (a
+    // season's episodes from the one chosen); start: seconds
     signal playRequested(var drive, var queue, real start)
     signal closed()
 
     visible: false
 
     // the pages opened to get here, the last one showing:
-    // { kind: "home"|"grid"|"list"|"detail", title, subtitle, path, items,
-    //   index, item (detail), siblings (detail: the season's episodes) }
+    // { kind: "home"|"grid"|"list"|"detail", title, subtitle, items, index,
+    //   library (grid: its id), deck (grid: Continue watching), parent
+    //   (list: the show or season), item (detail), siblings (detail: the
+    //   season's episodes) }
     property var pages: []
     readonly property var page: pages.length ? pages[pages.length - 1] : null
     property bool loading: false
     // the latest load: an earlier one's reply is dropped
     property int loadSeq: 0
     property string error: ""
-    readonly property bool ready: plex.state === "ready"
+    readonly property bool ready: server.state === "ready"
+    readonly property bool plex: server.service === "Plex"
+    // the server's own sign-in step is showing
+    readonly property bool ownSignIn: !["signedOut", "linking", "connecting", "ready", "error"].includes(server.state)
 
     function open() {
         visible = true
         pages = []
-        plex.start()
+        server.start()
         if (ready)
             showHome()
         forceActiveFocus()
@@ -47,17 +54,22 @@ FocusScope {
     }
 
     function close() {
-        plex.cancelSignIn()
+        server.cancelSignIn()
         focus = false
         visible = false
         closed()
     }
 
     Connections {
-        target: root.plex
+        target: root.server
         function onStateChanged() {
             if (root.visible && root.ready && !root.pages.length)
                 root.showHome()
+            if (!root.ready && root.visible)
+                Qt.callLater(() => {
+                    if (root.visible) // not closed meanwhile
+                        (root.ownSignIn && signInView.item ? signInView.item : root).forceActiveFocus()
+                })
         }
     }
 
@@ -101,24 +113,25 @@ FocusScope {
             focusPage()
     }
 
-    function load(p, path, transform) {
+    // fetch(callback) asks the server; its answer becomes p's items
+    function load(p, fetch, transform) {
         const seq = ++loadSeq
         loading = true
         error = ""
-        plex.get(path, (container, message) => {
+        fetch((result, message) => {
             if (seq !== loadSeq || pages.indexOf(p) < 0)
                 return
             loading = false
-            if (!container) {
+            if (!result) {
                 error = message
                 return
             }
-            setItems(p, transform(container))
+            setItems(p, transform ? transform(result) : result)
         })
     }
 
     function showHome() {
-        const p = { kind: "home", title: plex.serverName, subtitle: "Plex", items: [] }
+        const p = { kind: "home", title: server.serverName, subtitle: server.service, items: [] }
         pages = [p]
         loadHome(p)
         focusPage()
@@ -127,19 +140,15 @@ FocusScope {
     // "Continue watching" (when there's something), then the film and show
     // libraries
     function loadHome(p) {
-        load(p, "/library/sections", c => {
-            const libs = (c.Directory || []).filter(d => d.type === "movie" || d.type === "show")
-                .map(d => ({ label: d.title, detail: d.type === "movie" ? "Films" : "TV shows",
-                             path: "/library/sections/" + d.key + "/all", library: true }))
-            plex.get("/library/onDeck", (deck) => {
-                const items = deck && deck.Metadata ? deck.Metadata : []
+        load(p, cb => server.libraries(cb), libs => {
+            server.continueWatching(deck => {
                 const current = pages[0]
-                if (!items.length || !current || current.kind !== "home")
+                if (!deck || !deck.length || !current || current.kind !== "home")
                     return
-                setItems(current, [{ label: "Continue watching", detail: items.length + "",
-                                     deck: items }].concat(current.items.filter(r => !r.deck)))
+                setItems(current, [{ label: "Continue watching", detail: deck.length + "", deck: true }]
+                                  .concat(current.items.filter(r => !r.deck)))
             })
-            return libs
+            return libs.map(l => ({ label: l.title, detail: l.type === "movie" ? "Films" : "TV shows", library: l.id }))
         })
     }
 
@@ -149,14 +158,21 @@ FocusScope {
         if (p.kind === "home")
             loadHome(p)
         else if (p.kind === "detail")
-            load(p, "/library/metadata/" + p.item.ratingKey, c => {
-                const item = (c.Metadata || [])[0]
-                if (item)
-                    p.item = item
-                return detailRows(p.item)
+            load(p, cb => server.refresh(p.item, cb), item => {
+                p.item = item
+                return detailRows(item)
             })
-        else if (p.path)
-            load(p, p.path, c => c.Metadata || [])
+        else
+            fetchPage(p)
+    }
+
+    function fetchPage(p) {
+        if (p.deck)
+            load(p, cb => server.continueWatching(cb))
+        else if (p.library !== undefined)
+            load(p, cb => server.items(p.library, cb))
+        else if (p.parent)
+            load(p, cb => server.children(p.parent, cb))
     }
 
     function activate(r) {
@@ -164,76 +180,77 @@ FocusScope {
             return
         const p = page
         p.index = p.kind === "grid" ? grid.currentIndex : list.currentIndex
-        if (p.kind === "home") {
-            if (r.deck)
-                push({ kind: "grid", title: "Continue watching", subtitle: plex.serverName, items: r.deck })
-            else
-                openPath({ kind: "grid", title: r.label, subtitle: plex.serverName, path: r.path })
-        } else if (r.type === "show") {
-            openPath({ kind: "list", title: r.title, subtitle: r.year || "", path: "/library/metadata/" + r.ratingKey + "/children" })
-        } else if (r.type === "season") {
-            openPath({ kind: "list", title: r.parentTitle || p.title, subtitle: r.title, path: "/library/metadata/" + r.ratingKey + "/children" })
-        } else if (r.type === "movie" || r.type === "episode") {
+        if (p.kind === "home")
+            openPage({ kind: "grid", title: r.label, subtitle: server.serverName, deck: !!r.deck, library: r.library })
+        else if (r.type === "show")
+            openPage({ kind: "list", title: r.title, subtitle: r.year ? r.year + "" : "", parent: r })
+        else if (r.type === "season")
+            openPage({ kind: "list", title: r.show || p.title, subtitle: r.title, parent: r })
+        else if (r.type === "movie" || r.type === "episode") {
             const siblings = p.kind === "list" ? p.items.filter(i => i.type === "episode") : [r]
             push({ kind: "detail", item: r, siblings: siblings, items: detailRows(r) })
-        } else if (r.play !== undefined) {
+        } else if (r.play !== undefined)
             play(p, r.play)
-        }
     }
 
-    function openPath(p) {
+    function openPage(p) {
         p.items = []
         push(p)
-        load(page, p.path, c => c.Metadata || [])
+        fetchPage(page)
     }
 
     function detailRows(item) {
-        const offset = (item.viewOffset || 0) / 1000
-        return offset > 0
-            ? [{ label: "Resume", detail: Theme.formatTime(offset), play: offset },
+        return item.position > 0
+            ? [{ label: "Resume", detail: Theme.formatTime(item.position), play: item.position },
                { label: "Play from the beginning", detail: "", play: 0 }]
             : [{ label: "Play", detail: "", play: 0 }]
     }
 
     function play(p, start) {
-        const drive = plex.playable(p.item)
+        const drive = server.playable(p.item)
         if (!drive.url) {
-            error = "Plex has no file for this"
+            error = server.service + " has no file for this"
             return
         }
-        const from = Math.max(0, p.siblings.findIndex(s => s.ratingKey === p.item.ratingKey))
-        const queue = p.siblings.slice(from).map(s => plex.playable(s)).filter(d => d.url)
-            .map(d => ({ url: d.url, title: d.title, ratingKey: d.ratingKey }))
-        root.playRequested(drive, queue.length ? queue : [{ url: drive.url, title: drive.title, ratingKey: drive.ratingKey }], start)
+        const from = Math.max(0, p.siblings.findIndex(s => s.id === p.item.id))
+        const queue = p.siblings.slice(from).map(s => server.playable(s)).filter(d => d.url)
+            .map(d => ({ url: d.url, title: d.title, itemId: d.itemId }))
+        root.playRequested(drive, queue.length ? queue : [{ url: drive.url, title: drive.title, itemId: drive.itemId }], start)
     }
 
     function itemTitle(i) {
         if (i.type === "episode")
-            return i.grandparentTitle ? i.grandparentTitle : i.title
+            return i.show || i.title
         return i.title || ""
     }
 
     function itemSubtitle(i) {
         if (i.type === "episode")
-            return "S" + i.parentIndex + " · E" + i.index + "  " + i.title
+            return "S" + i.season + " · E" + i.number + "  " + i.title
         if (i.type === "season")
-            return i.leafCount ? i.leafCount + " episodes" : ""
+            return i.childCount ? i.childCount + " episodes" : ""
         return i.year ? i.year + "" : ""
     }
 
     function progressOf(i) {
-        return i.viewOffset && i.duration ? i.viewOffset / i.duration : 0
+        return i.position && i.duration ? i.position / i.duration : 0
     }
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Escape || event.key === Qt.Key_Back) {
             back()
             event.accepted = true
-        } else if (event.key === Qt.Key_Menu && plex.state !== "signedOut" && plex.state !== "linking") {
+        } else if (event.key === Qt.Key_Menu && server.signedIn) {
             signOutConfirm.open()
             event.accepted = true
-        } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && plex.state === "error") {
-            plex.start()
+        } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && server.state === "error") {
+            server.start()
+            event.accepted = true
+        } else if (event.key === Qt.Key_I && server.state === "linking" && !plex) {
+            server.usePassword()
+            event.accepted = true
+        } else if (event.key === Qt.Key_I && server.state === "error" && !plex) {
+            server.changeServer()
             event.accepted = true
         }
     }
@@ -246,28 +263,33 @@ FocusScope {
     // signing in, finding the server, or why it can't be reached
     Column {
         anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: Theme.margin }
-        visible: !root.ready
+        visible: !root.ready && !root.ownSignIn
         spacing: Theme.spacing
         Text {
-            text: root.plex.state === "linking" ? "Sign in to Plex"
-                : root.plex.state === "error" ? root.plex.message
-                : "Finding your Plex server…"
+            width: parent.width
+            wrapMode: Text.Wrap
+            text: root.server.state === "linking" ? "Sign in to " + (root.plex ? "Plex" : root.server.serverName)
+                : root.server.state === "error" ? root.server.message
+                : root.plex ? "Finding your Plex server…" : "Connecting to Jellyfin…"
             color: Theme.text
             font.pixelSize: Theme.fontHuge
             font.weight: Font.DemiBold
         }
         Text {
-            visible: root.plex.state === "linking"
+            visible: root.server.state === "linking"
             width: parent.width
             wrapMode: Text.Wrap
-            text: "On your phone or computer, go to <font color=\"" + Theme.accent + "\">plex.tv/link</font> and enter this code:"
+            text: root.plex
+                ? "On your phone or computer, go to <font color=\"" + Theme.accent + "\">plex.tv/link</font> and enter this code:"
+                : "In Jellyfin on your phone or computer, open your profile, choose <font color=\"" + Theme.accent
+                  + "\">Quick Connect</font> and enter this code:"
             textFormat: Text.StyledText
             color: Theme.textDim
             font.pixelSize: Theme.fontLarge
         }
         Text {
-            visible: root.plex.state === "linking"
-            text: root.plex.linkCode || "…"
+            visible: root.server.state === "linking"
+            text: root.server.linkCode || "…"
             color: Theme.accent
             font.pixelSize: Theme.fontHuge * 2
             font.weight: Font.Bold
@@ -320,14 +342,12 @@ FocusScope {
             required property var modelData
             required property int index
             readonly property bool current: GridView.isCurrentItem && grid.activeFocus
-            // a show Plex has no poster for (not matched to its listing): a
-            // frame from its first episode
+            // a show with no poster (not matched to its listing): a frame
+            // from its first episode
             property string fallbackThumb: ""
             Component.onCompleted: {
                 if (modelData.type === "show" && !modelData.thumb)
-                    root.plex.get("/library/metadata/" + modelData.ratingKey
-                                  + "/allLeaves?X-Plex-Container-Start=0&X-Plex-Container-Size=1", c => {
-                        const first = c && c.Metadata ? c.Metadata[0] : null
+                    root.server.firstEpisode(modelData, first => {
                         if (first && first.thumb)
                             fallbackThumb = first.thumb
                     })
@@ -363,7 +383,7 @@ FocusScope {
                     asynchronous: true
                     fillMode: Image.PreserveAspectCrop
                     sourceSize: Qt.size(width, height)
-                    source: root.plex.imageUrl(modelData.type === "episode" ? (modelData.grandparentThumb || modelData.thumb)
+                    source: root.server.imageUrl(modelData.type === "episode" ? (modelData.showThumb || modelData.thumb)
                                                                            : (modelData.thumb || fallbackThumb),
                                                Math.round(width), Math.round(height))
                 }
@@ -435,7 +455,7 @@ FocusScope {
                 anchors { left: parent.left; leftMargin: Theme.spacing; right: detail.left; rightMargin: Theme.spacing
                           verticalCenter: parent.verticalCenter }
                 text: modelData.label !== undefined ? modelData.label
-                    : episode ? modelData.index + ".  " + modelData.title
+                    : episode ? modelData.number + ".  " + modelData.title
                     : modelData.title + (modelData.type === "season" ? "  ›" : "")
                 color: Theme.text
                 font.pixelSize: Theme.fontMedium
@@ -447,10 +467,10 @@ FocusScope {
                 anchors { right: parent.right; rightMargin: Theme.spacing; verticalCenter: parent.verticalCenter }
                 text: modelData.detail !== undefined ? modelData.detail
                     : !episode ? root.itemSubtitle(modelData)
-                    : modelData.viewOffset ? "Resume at " + Theme.formatTime(modelData.viewOffset / 1000)
-                    : modelData.viewCount ? "Watched"
-                    : Theme.formatTime((modelData.duration || 0) / 1000)
-                color: episode && modelData.viewOffset ? Theme.accent : Theme.textDim
+                    : modelData.position > 0 ? "Resume at " + Theme.formatTime(modelData.position)
+                    : modelData.watched ? "Watched"
+                    : Theme.formatTime(modelData.duration || 0)
+                color: episode && modelData.position > 0 ? Theme.accent : Theme.textDim
                 font.pixelSize: Theme.fontSmall
             }
         }
@@ -471,12 +491,12 @@ FocusScope {
             asynchronous: true
             fillMode: Image.PreserveAspectCrop
             sourceSize: Qt.size(width, height)
-            source: summary.visible ? root.plex.imageUrl(root.page.item.art || root.page.item.thumb || "", Math.round(width), Math.round(height)) : ""
+            source: summary.visible ? root.server.imageUrl(root.page.item.art || root.page.item.thumb || "", Math.round(width), Math.round(height)) : ""
         }
         Text {
             width: parent.width
             text: !summary.visible ? "" : [root.page.item.type === "movie" ? root.page.item.year : "",
-                   Theme.formatTime((root.page.item.duration || 0) / 1000),
+                   Theme.formatTime(root.page.item.duration || 0),
                    root.page.item.contentRating || ""].filter(x => x).join("  ·  ")
             color: Theme.textDim
             font.pixelSize: Theme.fontSmall
@@ -503,10 +523,14 @@ FocusScope {
     HintBar {
         id: hints
         anchors { left: parent.left; bottom: parent.bottom; margins: Theme.margin }
-        hints: root.plex.state === "error"
-            ? [{ buttons: ["south"], text: "Try again" }, { buttons: ["start"], text: "Sign out" }, { buttons: ["east"], text: "Back" }]
-            : root.plex.state === "linking"
-            ? [{ buttons: ["east"], text: "Back" }]
+        visible: !root.ownSignIn
+        hints: root.server.state === "error"
+            ? [{ buttons: ["south"], text: "Try again" }].concat(
+                root.plex ? [] : [{ buttons: ["north"], text: "Another server" }],
+                root.server.signedIn ? [{ buttons: ["start"], text: "Sign out" }] : [],
+                [{ buttons: ["east"], text: "Back" }])
+            : root.server.state === "linking"
+            ? (root.plex ? [] : [{ buttons: ["north"], text: "Use a password" }]).concat([{ buttons: ["east"], text: "Back" }])
             : [{ buttons: ["south"], text: root.page && root.page.kind === "detail" ? "Play" : "Open" },
                { buttons: [root.page && root.page.kind === "grid" ? "dpad" : "dpadV"], text: "Choose" },
                { buttons: ["start"], text: "Sign out" },
@@ -515,14 +539,23 @@ FocusScope {
 
     ConfirmDialog {
         id: signOutConfirm
-        text: "Sign out of Plex?"
+        text: "Sign out of " + root.server.service + "?"
         acceptText: "Sign out"
         cancelText: "Stay"
         returnFocus: root
         onAccepted: {
             root.pages = []
-            root.plex.signOut()
+            root.server.signOut()
             root.close()
         }
+    }
+
+    // the server's own sign-in steps (Jellyfin: its address, a password)
+    Loader {
+        id: signInView
+        anchors.fill: parent
+        active: root.visible && root.ownSignIn && !!root.signIn
+        sourceComponent: root.signIn
+        onLoaded: item.forceActiveFocus()
     }
 }

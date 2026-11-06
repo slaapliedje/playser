@@ -53,7 +53,9 @@ qt_add_qml_module(playser
         src/SystemCheck.h src/SystemCheck.cpp
         src/Gamepad.h src/Gamepad.cpp
         src/MediaFiles.h src/MediaFiles.cpp
+        src/MediaServer.h src/MediaServer.cpp
         src/PlexClient.h src/PlexClient.cpp
+        src/JellyfinClient.h src/JellyfinClient.cpp
     QML_FILES
         qml/Main.qml
         qml/HomeScreen.qml
@@ -63,7 +65,9 @@ qt_add_qml_module(playser
         qml/Resume.qml
         qml/DiscScreen.qml
         qml/FilesScreen.qml
-        qml/PlexScreen.qml
+        qml/LibraryScreen.qml
+        qml/JellyfinSignIn.qml
+        qml/OnScreenKeyboard.qml
         qml/SetupScreen.qml
         qml/ButtonGlyph.qml
         qml/HintBar.qml

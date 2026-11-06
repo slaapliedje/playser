@@ -1,12 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "PlexClient.h"
 #include <QCoreApplication>
-#include <QJSEngine>
 #include <QJsonDocument>
-#include <QMutex>
 #include <QNetworkAccessManager>
-#include <QQmlEngine>
-#include <QQmlNetworkAccessManagerFactory>
 #include <QNetworkReply>
 #include <QSettings>
 #include <QSysInfo>
@@ -27,41 +23,48 @@ QVariant parseJson(QNetworkReply *reply)
     return QJsonDocument::fromJson(reply->readAll()).toVariant();
 }
 
-// the server QML images may load from, and its token: read from the
-// engine's loader threads
-QMutex imageAuthLock;
-QString imageAuthBase;
-QByteArray imageAuthToken;
-
-class ImageAuthNam : public QNetworkAccessManager
+// Plex's Metadata as a MediaServer item
+QVariantMap toItem(const QVariantMap &m)
 {
-public:
-    using QNetworkAccessManager::QNetworkAccessManager;
+    const QString type = m.value("type").toString();
+    const bool episode = type == "episode";
+    const bool season = type == "season";
+    const int leaves = m.value("leafCount").toInt();
+    return {
+        { "id", m.value("ratingKey").toString() },
+        { "type", type },
+        { "title", m.value("title").toString() },
+        { "year", m.value("year").toInt() },
+        { "summary", m.value("summary").toString() },
+        { "contentRating", m.value("contentRating").toString() },
+        { "duration", m.value("duration").toDouble() / 1000 },
+        { "position", m.value("viewOffset").toDouble() / 1000 },
+        { "watched", type == "show" || season ? leaves > 0 && m.value("viewedLeafCount").toInt() >= leaves
+                                              : m.value("viewCount").toInt() > 0 },
+        { "show", episode ? m.value("grandparentTitle").toString() : season ? m.value("parentTitle").toString() : QString() },
+        { "season", episode ? m.value("parentIndex").toInt() : season ? m.value("index").toInt() : 0 },
+        { "number", episode ? m.value("index").toInt() : 0 },
+        { "childCount", leaves },
+        { "thumb", m.value("thumb").toString() },
+        { "showThumb", m.value("grandparentThumb").toString() },
+        { "art", m.value("art").toString() },
+        // what plays
+        { "part", m.value("Media").toList().value(0).toMap().value("Part").toList().value(0).toMap().value("key").toString() },
+    };
+}
 
-protected:
-    QNetworkReply *createRequest(Operation op, const QNetworkRequest &original, QIODevice *data) override
-    {
-        QNetworkRequest req(original);
-        {
-            QMutexLocker lock(&imageAuthLock);
-            if (!imageAuthBase.isEmpty() && req.url().toString().startsWith(imageAuthBase + '/'))
-                req.setRawHeader("X-Plex-Token", imageAuthToken);
-        }
-        return QNetworkAccessManager::createRequest(op, req, data);
-    }
-};
-
-class ImageAuthFactory : public QQmlNetworkAccessManagerFactory
+QVariantList toItems(const QVariantMap &container)
 {
-public:
-    QNetworkAccessManager *create(QObject *parent) override { return new ImageAuthNam(parent); }
-};
+    QVariantList out;
+    for (const QVariant &v : container.value("Metadata").toList())
+        out.append(toItem(v.toMap()));
+    return out;
+}
 
 } // namespace
 
 PlexClient::PlexClient(QObject *parent)
-    : QObject(parent)
-    , m_net(new QNetworkAccessManager(this))
+    : MediaServer(parent)
 {
     QSettings settings;
     settings.beginGroup("plex");
@@ -76,26 +79,11 @@ PlexClient::PlexClient(QObject *parent)
     connect(&m_pinPoll, &QTimer::timeout, this, &PlexClient::pollPin);
 }
 
-void PlexClient::installImageAuth(QQmlEngine *engine)
-{
-    static ImageAuthFactory factory;
-    engine->setNetworkAccessManagerFactory(&factory);
-}
-
 void PlexClient::setServer(const QString &baseUrl, const QString &token)
 {
     m_baseUrl = baseUrl;
     m_serverToken = token;
-    QMutexLocker lock(&imageAuthLock);
-    imageAuthBase = baseUrl;
-    imageAuthToken = token.toUtf8();
-}
-
-void PlexClient::setState(const QString &state, const QString &message)
-{
-    m_state = state;
-    m_message = message;
-    emit stateChanged();
+    setImageAuth(baseUrl, "X-Plex-Token", token.toUtf8());
 }
 
 QNetworkRequest PlexClient::request(const QUrl &url, const QString &token) const
@@ -304,40 +292,87 @@ void PlexClient::tryConnections(const QVariantList &candidates, const QString &n
     }
 }
 
-void PlexClient::get(const QString &path, const QJSValue &callback)
+void PlexClient::get(const QString &path, const QJSValue &callback,
+                     const std::function<void(const QVariantMap &)> &done)
 {
-    QJSEngine *engine = qjsEngine(this);
     if (m_state != "ready") {
-        if (callback.isCallable() && engine)
-            QJSValue(callback).call({ QJSValue::NullValue, QStringLiteral("Not connected") });
+        fail(callback, QStringLiteral("Not connected"));
         return;
     }
     QNetworkReply *reply = m_net->get(request(QUrl(m_baseUrl + path), m_serverToken));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, callback] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, callback, done] {
         reply->deleteLater();
-        QJSEngine *engine = qjsEngine(this);
-        if (!engine || !callback.isCallable())
-            return;
         if (reply->error() != QNetworkReply::NoError) {
             qWarning("plex: %s: %s", qPrintable(reply->url().path()), qPrintable(reply->errorString()));
-            QJSValue(callback).call({ QJSValue::NullValue, QStringLiteral("Your Plex server didn't answer") });
+            fail(callback, QStringLiteral("Your Plex server didn't answer"));
             return;
         }
-        const QVariant container = parseJson(reply).toMap().value("MediaContainer");
-        QJSValue(callback).call({ engine->toScriptValue(container) });
+        done(parseJson(reply).toMap().value("MediaContainer").toMap());
     });
 }
 
-QString PlexClient::imageUrl(const QString &thumb, int width, int height) const
+void PlexClient::getItems(const QString &path, const QJSValue &callback)
 {
-    if (thumb.isEmpty() || m_baseUrl.isEmpty())
+    get(path, callback, [this, callback](const QVariantMap &c) { answer(callback, toItems(c)); });
+}
+
+void PlexClient::libraries(const QJSValue &callback)
+{
+    get("/library/sections", callback, [this, callback](const QVariantMap &c) {
+        QVariantList out;
+        for (const QVariant &v : c.value("Directory").toList()) {
+            const QVariantMap d = v.toMap();
+            const QString type = d.value("type").toString();
+            if (type == "movie" || type == "show")
+                out.append(QVariantMap{ { "id", d.value("key").toString() }, { "title", d.value("title").toString() },
+                                        { "type", type } });
+        }
+        answer(callback, out);
+    });
+}
+
+void PlexClient::continueWatching(const QJSValue &callback)
+{
+    getItems("/library/onDeck", callback);
+}
+
+void PlexClient::items(const QString &libraryId, const QJSValue &callback)
+{
+    getItems("/library/sections/" + libraryId + "/all", callback);
+}
+
+void PlexClient::children(const QVariantMap &item, const QJSValue &callback)
+{
+    getItems("/library/metadata/" + item.value("id").toString() + "/children", callback);
+}
+
+void PlexClient::refresh(const QVariantMap &item, const QJSValue &callback)
+{
+    get("/library/metadata/" + item.value("id").toString(), callback, [this, callback](const QVariantMap &c) {
+        const QVariantList items = toItems(c);
+        if (items.isEmpty())
+            fail(callback, QStringLiteral("It's no longer on your Plex server"));
+        else
+            answer(callback, items.first());
+    });
+}
+
+void PlexClient::firstEpisode(const QVariantMap &show, const QJSValue &callback)
+{
+    get("/library/metadata/" + show.value("id").toString() + "/allLeaves?X-Plex-Container-Start=0&X-Plex-Container-Size=1",
+        callback, [this, callback](const QVariantMap &c) { answer(callback, toItems(c).value(0)); });
+}
+
+QString PlexClient::imageUrl(const QString &image, int width, int height) const
+{
+    if (image.isEmpty() || m_baseUrl.isEmpty())
         return {};
     QUrlQuery q;
     q.addQueryItem("width", QString::number(width));
     q.addQueryItem("height", QString::number(height));
     q.addQueryItem("minSize", "1");
     q.addQueryItem("upscale", "1");
-    q.addQueryItem("url", thumb);
+    q.addQueryItem("url", image);
     QUrl url(m_baseUrl + "/photo/:/transcode");
     url.setQuery(q);
     return url.toString(QUrl::FullyEncoded);
@@ -345,23 +380,21 @@ QString PlexClient::imageUrl(const QString &thumb, int width, int height) const
 
 QVariantMap PlexClient::playable(const QVariantMap &item) const
 {
-    const QVariantMap media = item.value("Media").toList().value(0).toMap();
-    const QString part = media.value("Part").toList().value(0).toMap().value("key").toString();
+    const QString part = item.value("part").toString();
     if (part.isEmpty() || m_baseUrl.isEmpty())
         return {};
-    const QString type = item.value("type").toString();
     const QString title = item.value("title").toString();
     return {
         { "url", m_baseUrl + part },
         { "label", title },
         { "title", title },
         { "kind", QStringLiteral("plex") },
-        { "ratingKey", item.value("ratingKey").toString() },
-        { "contentHash", "plex:" + item.value("ratingKey").toString() },
+        { "library", QStringLiteral("plex") },
+        { "itemId", item.value("id").toString() },
+        { "contentHash", "plex:" + item.value("id").toString() },
         { "options", QVariantMap{ { "http-header-fields", "X-Plex-Token: " + m_serverToken } } },
-        { "plex", true },
         // an episode's show, for the player's title
-        { "show", type == "episode" ? item.value("grandparentTitle").toString() : QString() },
+        { "show", item.value("show").toString() },
     };
 }
 

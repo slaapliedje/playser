@@ -77,6 +77,16 @@ void UiRenderer::deliverKey(int qtKey)
     QCoreApplication::sendEvent(m_window, &release);
 }
 
+void UiRenderer::deliverText(QChar c)
+{
+    // Qt's key codes for printable characters are their upper case
+    const int key = c.toUpper().unicode();
+    QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, QString(c));
+    QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, QString(c));
+    QCoreApplication::sendEvent(m_window, &press);
+    QCoreApplication::sendEvent(m_window, &release);
+}
+
 void UiRenderer::updateSize()
 {
     // fixed height, width following the window's aspect ratio

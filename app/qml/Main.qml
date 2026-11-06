@@ -45,10 +45,17 @@ FocusScope {
     Binding { target: Theme; property: "buttonStyle"; value: root.gamepad.style }
 
     DiscMonitor { id: discs }
-    // signed in before: find the server now, so the library opens at once
+    // signed in before: find the servers now, so the libraries open at once
     PlexClient {
         id: plex
         Component.onCompleted: if (signedIn) start()
+    }
+    JellyfinClient {
+        id: jellyfin
+        Component.onCompleted: if (signedIn) start()
+    }
+    function libraryServer(name) {
+        return name === "plex" ? plex : name === "jellyfin" ? jellyfin : null
     }
 
     // A disc through its menus. A Blu-ray's are opened from its mount
@@ -147,18 +154,19 @@ FocusScope {
         monitor: discs
         check: system
         plex: plex
+        jellyfin: jellyfin
         stereoDisplay: root.mpv.stereoDisplay
         focus: !player.active
         onSetupRequested: root.showSetup()
         onFilesRequested: filesScreen.open()
-        onPlexRequested: plexScreen.open()
+        onLibraryRequested: server => (server === plex ? plexScreen : jellyfinScreen).open()
         onPlayRequested: drive => {
             root.returnTo = null
             root.start(drive)
         }
     }
 
-    // played from the file browser or Plex: back there afterwards
+    // played from the file browser or a library: back there afterwards
     property Item returnTo: null
     function backFromPlaying() {
         if (returnTo)
@@ -207,10 +215,10 @@ FocusScope {
         onClosed: home.forceActiveFocus()
     }
 
-    PlexScreen {
+    LibraryScreen {
         id: plexScreen
         anchors.fill: parent
-        plex: plex
+        server: plex
         onPlayRequested: (drive, queue, start) => {
             visible = false
             root.returnTo = plexScreen
@@ -219,13 +227,33 @@ FocusScope {
         onClosed: home.forceActiveFocus()
     }
 
-    // Plex's "continue watching" and watched marks follow what plays here
+    LibraryScreen {
+        id: jellyfinScreen
+        anchors.fill: parent
+        server: jellyfin
+        signIn: Component {
+            JellyfinSignIn {
+                server: jellyfin
+                onCancelled: jellyfinScreen.close()
+            }
+        }
+        onPlayRequested: (drive, queue, start) => {
+            visible = false
+            root.returnTo = jellyfinScreen
+            player.play(drive, queue, 0, start)
+        }
+        onClosed: home.forceActiveFocus()
+    }
+
+    // the server's "continue watching" and watched marks follow what plays
+    // here
     Timer {
+        readonly property MediaServer server: player.active && player.drive ? root.libraryServer(player.drive.library) : null
         interval: 10000
         repeat: true
-        running: player.active && !!player.drive && !!player.drive.plex && !player.opening
-        onTriggered: plex.report(player.entry.ratingKey, root.mpv.paused ? "paused" : "playing",
-                                 root.mpv.position, root.mpv.duration)
+        running: !!server && !player.opening
+        onTriggered: server.report(player.entry.itemId, root.mpv.paused ? "paused" : "playing",
+                                   root.mpv.position, root.mpv.duration)
     }
 
     DiscScreen {
@@ -280,11 +308,12 @@ FocusScope {
         mpv: root.mpv
         nav: nav
         onEntryStopped: (entry, position, duration, ended) => {
-            if (!entry.ratingKey)
+            const server = root.libraryServer(drive.library)
+            if (!server || !entry.itemId)
                 return
-            plex.report(entry.ratingKey, "stopped", position, duration)
+            server.report(entry.itemId, "stopped", position, duration)
             if (ended || position > duration * 0.9)
-                plex.scrobble(entry.ratingKey)
+                server.scrobble(entry.itemId)
         }
         onClosed: wasExtra => {
             if (wasExtra)

@@ -85,7 +85,7 @@ FocusScope {
     // url: what to play to resume (a title through menus resumes as that
     // title, without the menus: a DVD's title, a Blu-ray's playlist)
     function saveResume() {
-        if (opening || entry.extra || (drive && drive.plex)) // Plex keeps its own
+        if (opening || entry.extra || (drive && drive.library)) // a media server keeps its own
             return
         if (navigating && !nav.menus) {
             const p = nav.position()
