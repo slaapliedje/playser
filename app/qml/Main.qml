@@ -45,6 +45,11 @@ FocusScope {
     Binding { target: Theme; property: "buttonStyle"; value: root.gamepad.style }
 
     DiscMonitor { id: discs }
+    // signed in before: find the server now, so the library opens at once
+    PlexClient {
+        id: plex
+        Component.onCompleted: if (signedIn) start()
+    }
 
     // A disc through its menus. A Blu-ray's are opened from its mount
     // (DiscMonitor.ensureMounted); if it won't mount, the film plays.
@@ -141,21 +146,23 @@ FocusScope {
         visible: !player.active
         monitor: discs
         check: system
+        plex: plex
         stereoDisplay: root.mpv.stereoDisplay
         focus: !player.active
         onSetupRequested: root.showSetup()
         onFilesRequested: filesScreen.open()
+        onPlexRequested: plexScreen.open()
         onPlayRequested: drive => {
-            root.fromFiles = false
+            root.returnTo = null
             root.start(drive)
         }
     }
 
-    // played from the file browser: back there afterwards
-    property bool fromFiles: false
+    // played from the file browser or Plex: back there afterwards
+    property Item returnTo: null
     function backFromPlaying() {
-        if (fromFiles)
-            filesScreen.reopen()
+        if (returnTo)
+            returnTo.reopen()
         else
             home.forceActiveFocus()
     }
@@ -194,10 +201,31 @@ FocusScope {
         anchors.fill: parent
         onPlayRequested: drive => {
             visible = false
-            root.fromFiles = true
+            root.returnTo = filesScreen
             root.start(drive)
         }
         onClosed: home.forceActiveFocus()
+    }
+
+    PlexScreen {
+        id: plexScreen
+        anchors.fill: parent
+        plex: plex
+        onPlayRequested: (drive, queue, start) => {
+            visible = false
+            root.returnTo = plexScreen
+            player.play(drive, queue, 0, start)
+        }
+        onClosed: home.forceActiveFocus()
+    }
+
+    // Plex's "continue watching" and watched marks follow what plays here
+    Timer {
+        interval: 10000
+        repeat: true
+        running: player.active && !!player.drive && !!player.drive.plex && !player.opening
+        onTriggered: plex.report(player.entry.ratingKey, root.mpv.paused ? "paused" : "playing",
+                                 root.mpv.position, root.mpv.duration)
     }
 
     DiscScreen {
@@ -251,6 +279,13 @@ FocusScope {
         anchors.fill: parent
         mpv: root.mpv
         nav: nav
+        onEntryStopped: (entry, position, duration, ended) => {
+            if (!entry.ratingKey)
+                return
+            plex.report(entry.ratingKey, "stopped", position, duration)
+            if (ended || position > duration * 0.9)
+                plex.scrobble(entry.ratingKey)
+        }
         onClosed: wasExtra => {
             if (wasExtra)
                 discScreen.reopen()

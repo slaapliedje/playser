@@ -228,6 +228,9 @@ void Mpv::load(const QString &url, const QVariantMap &options, double start)
 {
     for (auto it = options.cbegin(); it != options.cend(); ++it)
         setMpvProperty(it.key(), it.value());
+    // a Plex token goes only to the stream it was given for
+    if (!options.contains("http-header-fields"))
+        setMpvProperty("http-header-fields", QString());
     if (start > 0)
         command({ "loadfile", url, "replace", -1, QStringLiteral("start=%1").arg(start, 0, 'f', 1) });
     else

@@ -22,6 +22,7 @@
 
 #include "Gamepad.h"
 #include "Mpv.h"
+#include "PlexClient.h"
 #include "UiRenderer.h"
 
 // SIGTERM (Steam's "Exit game") and SIGINT quit through the event loop, so
@@ -255,6 +256,7 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName("playser");
     app.setOrganizationName("playser"); // settings: ~/.config/playser/
+    app.setApplicationVersion(QStringLiteral(PLAYSER_VERSION));
     // the same type everywhere: SteamOS's runtime only has DejaVu Sans, and
     // desktop hosts vary (data/fonts, SIL OFL)
     const int font = QFontDatabase::addApplicationFont(":/fonts/InterVariable.ttf");
@@ -306,6 +308,7 @@ int main(int argc, char *argv[])
             ui.deliverKey(key);
     });
 
+    PlexClient::installImageAuth(&engine);
     QQmlComponent component(&engine, "Playser", "Main");
     QObject *root = component.createWithInitialProperties({
         { "mpv", QVariant::fromValue(&mpv) }, { "gamepad", QVariant::fromValue(&gamepad) } });

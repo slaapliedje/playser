@@ -4,7 +4,7 @@ project(playser VERSION 0.2.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Quick DBus)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Quick DBus Network)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
 pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
@@ -53,6 +53,7 @@ qt_add_qml_module(playser
         src/SystemCheck.h src/SystemCheck.cpp
         src/Gamepad.h src/Gamepad.cpp
         src/MediaFiles.h src/MediaFiles.cpp
+        src/PlexClient.h src/PlexClient.cpp
     QML_FILES
         qml/Main.qml
         qml/HomeScreen.qml
@@ -62,6 +63,7 @@ qt_add_qml_module(playser
         qml/Resume.qml
         qml/DiscScreen.qml
         qml/FilesScreen.qml
+        qml/PlexScreen.qml
         qml/SetupScreen.qml
         qml/ButtonGlyph.qml
         qml/HintBar.qml
@@ -69,6 +71,7 @@ qt_add_qml_module(playser
 )
 
 target_include_directories(playser PRIVATE src)
+target_compile_definitions(playser PRIVATE PLAYSER_VERSION="${PROJECT_VERSION}")
 
 # offline disc catalogue from TheDiscDB (tools/build-discdb-index.py)
 qt_add_resources(playser discdb
@@ -83,7 +86,7 @@ qt_add_resources(playser fonts
     FILES data/fonts/InterVariable.ttf)
 
 target_link_libraries(playser PRIVATE
-    Qt6::Quick Qt6::DBus PkgConfig::MPV PkgConfig::SDL3 ZLIB::ZLIB udfread discnav)
+    Qt6::Quick Qt6::DBus Qt6::Network PkgConfig::MPV PkgConfig::SDL3 ZLIB::ZLIB udfread discnav)
 
 include(GNUInstallDirs)
 install(TARGETS playser RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

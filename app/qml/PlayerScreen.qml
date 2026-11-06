@@ -30,6 +30,9 @@ FocusScope {
     property bool opening: false
     // wasExtra: it played one of the disc's extras
     signal closed(bool wasExtra)
+    // an entry played through mpv stopped where it was (position, of
+    // duration, in seconds), or at its end (ended): for Plex's progress
+    signal entryStopped(var entry, real position, real duration, bool ended)
 
     // q: the queue (default: the disc's own url); i: entry; start: seconds
     function play(d, q, i, start) {
@@ -82,7 +85,7 @@ FocusScope {
     // url: what to play to resume (a title through menus resumes as that
     // title, without the menus: a DVD's title, a Blu-ray's playlist)
     function saveResume() {
-        if (opening || entry.extra)
+        if (opening || entry.extra || (drive && drive.plex)) // Plex keeps its own
             return
         if (navigating && !nav.menus) {
             const p = nav.position()
@@ -109,6 +112,8 @@ FocusScope {
     function close(removed) {
         if (!removed)
             saveResume()
+        if (!opening && !navigating && root.mpv.duration > 0)
+            entryStopped(entry, root.mpv.position, root.mpv.duration, false)
         const wasNavigating = navigating
         if (nav)
             nav.close() // stops mpv too; also drops an open still under way
@@ -144,6 +149,8 @@ FocusScope {
         function onEndFile(reason) {
             if (!root.active || root.navigating) // DiscNav loads the next segment
                 return
+            if (reason === "eof")
+                root.entryStopped(root.entry, root.mpv.duration, root.mpv.duration, true)
             if (reason === "eof" && root.index + 1 < root.queue.length) {
                 root.loadEntry(root.index + 1, 0)
             } else if (reason === "eof") {
