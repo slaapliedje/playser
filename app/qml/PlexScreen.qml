@@ -77,6 +77,7 @@ FocusScope {
         loading = false
         error = ""
         focusPage()
+        reload() // what was played meanwhile: progress, Continue watching
     }
 
     // the current page's view, at its remembered row
