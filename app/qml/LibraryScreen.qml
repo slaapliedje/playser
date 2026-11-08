@@ -5,8 +5,8 @@ import Playser
 // A media server's library (Plex, Jellyfin): signing in, then "Continue
 // watching" and the libraries, a poster grid of a library's films or shows,
 // a show's seasons and a season's episodes, and a page for the film or
-// episode to play (resume or from the beginning). B goes back a page; Start
-// signs out.
+// episode to play (resume or from the beginning). Y searches; B goes back
+// a page; Start signs out.
 FocusScope {
     id: root
 
@@ -22,9 +22,9 @@ FocusScope {
 
     // the pages opened to get here, the last one showing:
     // { kind: "home"|"grid"|"list"|"detail", title, subtitle, items, index,
-    //   library (grid: its id), deck (grid: Continue watching), parent
-    //   (list: the show or season), item (detail), siblings (detail: the
-    //   season's episodes) }
+    //   library (grid: its id), deck (grid: Continue watching), search (grid:
+    //   what was searched for), parent (list: the show or season), item
+    //   (detail), siblings (detail: the season's episodes) }
     property var pages: []
     readonly property var page: pages.length ? pages[pages.length - 1] : null
     property bool loading: false
@@ -169,6 +169,8 @@ FocusScope {
     function fetchPage(p) {
         if (p.deck)
             load(p, cb => server.continueWatching(cb))
+        else if (p.search !== undefined)
+            load(p, cb => server.search(p.search, cb))
         else if (p.library !== undefined)
             load(p, cb => server.items(p.library, cb))
         else if (p.parent)
@@ -189,6 +191,8 @@ FocusScope {
         else if (r.type === "movie" || r.type === "episode") {
             const siblings = p.kind === "list" ? p.items.filter(i => i.type === "episode") : [r]
             push({ kind: "detail", item: r, siblings: siblings, items: detailRows(r) })
+            if (p.search !== undefined) // results can leave out what plays
+                reload()
         } else if (r.play !== undefined)
             play(p, r.play)
     }
@@ -197,6 +201,17 @@ FocusScope {
         p.items = []
         push(p)
         fetchPage(page)
+    }
+
+    function search(query) {
+        query = query.trim()
+        if (query === "")
+            return
+        if (page.kind !== "detail")
+            page.index = page.kind === "grid" ? grid.currentIndex : list.currentIndex
+        if (page.search !== undefined) // a new search replaces the last one
+            pages = pages.slice(0, -1)
+        openPage({ kind: "grid", title: "\u201c" + query + "\u201d", subtitle: "Search " + server.serverName, search: query })
     }
 
     function detailRows(item) {
@@ -239,6 +254,9 @@ FocusScope {
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Escape || event.key === Qt.Key_Back) {
             back()
+            event.accepted = true
+        } else if (event.key === Qt.Key_I && ready && page) {
+            searchKeyboard.open(page.search || "")
             event.accepted = true
         } else if (event.key === Qt.Key_Menu && server.signedIn) {
             signOutConfirm.open()
@@ -515,7 +533,8 @@ FocusScope {
     Text {
         anchors.centerIn: parent
         visible: root.ready && (root.loading || root.error !== "" || (!!root.page && !root.page.items.length))
-        text: root.error !== "" ? root.error : root.loading ? "Loading…" : "Nothing here"
+        text: root.error !== "" ? root.error : root.loading ? "Loading…"
+            : root.page && root.page.search !== undefined ? "Nothing found" : "Nothing here"
         color: root.error !== "" ? Theme.warning : Theme.textDim
         font.pixelSize: Theme.fontLarge
     }
@@ -533,8 +552,22 @@ FocusScope {
             ? (root.plex ? [] : [{ buttons: ["north"], text: "Use a password" }]).concat([{ buttons: ["east"], text: "Back" }])
             : [{ buttons: ["south"], text: root.page && root.page.kind === "detail" ? "Play" : "Open" },
                { buttons: [root.page && root.page.kind === "grid" ? "dpad" : "dpadV"], text: "Choose" },
+               { buttons: ["north"], text: "Search" },
                { buttons: ["start"], text: "Sign out" },
                { buttons: ["east"], text: "Back" }]
+    }
+
+    OnScreenKeyboard {
+        id: searchKeyboard
+        anchors.fill: parent
+        visible: false
+        label: "Search " + root.server.serverName
+        placeholder: "A film, show or episode"
+        onAccepted: typed => {
+            root.focusPage()
+            root.search(typed)
+        }
+        onCancelled: root.focusPage()
     }
 
     ConfirmDialog {

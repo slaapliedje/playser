@@ -357,6 +357,22 @@ void PlexClient::refresh(const QVariantMap &item, const QJSValue &callback)
     });
 }
 
+// the server's search: a hub of results per type, best matches first
+void PlexClient::search(const QString &query, const QJSValue &callback)
+{
+    get("/hubs/search?limit=30&query=" + QString::fromUtf8(QUrl::toPercentEncoding(query)), callback,
+        [this, callback](const QVariantMap &c) {
+        QVariantList out;
+        for (const QVariant &h : c.value("Hub").toList()) {
+            const QVariantMap hub = h.toMap();
+            const QString type = hub.value("type").toString();
+            if (type == "movie" || type == "show" || type == "episode")
+                out += toItems(hub);
+        }
+        answer(callback, out);
+    });
+}
+
 void PlexClient::firstEpisode(const QVariantMap &show, const QJSValue &callback)
 {
     get("/library/metadata/" + show.value("id").toString() + "/allLeaves?X-Plex-Container-Start=0&X-Plex-Container-Size=1",

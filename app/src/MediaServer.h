@@ -69,6 +69,8 @@ public:
     Q_INVOKABLE virtual void children(const QVariantMap &item, const QJSValue &callback) = 0;
     // the item again (its progress after playing)
     Q_INVOKABLE virtual void refresh(const QVariantMap &item, const QJSValue &callback) = 0;
+    // films, shows and episodes whose names match query
+    Q_INVOKABLE virtual void search(const QString &query, const QJSValue &callback) = 0;
     // a show's first episode (its picture stands in for a missing poster)
     Q_INVOKABLE virtual void firstEpisode(const QVariantMap &show, const QJSValue &callback) = 0;
     // an item's thumb, showThumb or art, scaled by the server

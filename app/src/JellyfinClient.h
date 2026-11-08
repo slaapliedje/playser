@@ -67,6 +67,7 @@ public:
     void items(const QString &libraryId, const QJSValue &callback) override;
     void children(const QVariantMap &item, const QJSValue &callback) override;
     void refresh(const QVariantMap &item, const QJSValue &callback) override;
+    void search(const QString &query, const QJSValue &callback) override;
     void firstEpisode(const QVariantMap &show, const QJSValue &callback) override;
     QString imageUrl(const QString &image, int width, int height) const override;
     QVariantMap playable(const QVariantMap &item) const override;

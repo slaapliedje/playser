@@ -520,6 +520,19 @@ void JellyfinClient::refresh(const QVariantMap &item, const QJSValue &callback)
         [this, callback](const QVariant &json) { answer(callback, toItem(json.toMap())); });
 }
 
+// films and shows first, then episodes (Jellyfin lists a show after them)
+void JellyfinClient::search(const QString &query, const QJSValue &callback)
+{
+    get("/Items?userId={user}&searchTerm=" + QString::fromUtf8(QUrl::toPercentEncoding(query))
+        + "&IncludeItemTypes=Movie,Series,Episode&Recursive=true&Limit=60&Fields=Overview",
+        callback, [this, callback](const QVariant &json) {
+        QVariantList items = toItems(json);
+        std::stable_partition(items.begin(), items.end(),
+                              [](const QVariant &v) { return v.toMap().value("type") != "episode"; });
+        answer(callback, items);
+    });
+}
+
 void JellyfinClient::firstEpisode(const QVariantMap &show, const QJSValue &callback)
 {
     get("/Shows/" + show.value("id").toString() + "/Episodes?userId={user}&Limit=1", callback,

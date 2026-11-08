@@ -589,6 +589,7 @@ Input (applies now, whatever the channel):
   Nintendo, Steam Deck) to pick the right glyphs instead of fixed letters.
 
 ### Phase 7 — Plex, then Jellyfin
+✅ Both in 0.3.0; search (Y, on-screen keyboard, the server's own search: films, shows, episodes) added 2026-11-08.
 - Sign-in by on-screen code (plex.tv PIN link; Jellyfin Quick Connect),
   never typing on a controller.
 - Library pages with posters, Continue Watching, search with the Steam
