@@ -20,7 +20,8 @@ Flatpak bundles are on the [releases page](https://github.com/slaapliedje/playse
 - **Files:** videos, DVD and Blu-ray folders (VIDEO_TS, BDMV) and ISO
   images from your Videos and Home folders, SD cards and USB drives; disc
   folders and images play with their menus, like the disc.
-- **Media servers:** Plex (sign in with a code at plex.tv/link) and
+- **Media servers:** Plex (sign in with a code at plex.tv/link; your own
+  server and those shared with you) and
   Jellyfin (found on your network or by its address; Quick Connect or a
   password). Search with the on-screen keyboard; films and shows play as
   they are, and resume points and watched marks go back to the server.

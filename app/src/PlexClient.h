@@ -22,15 +22,23 @@ class PlexClient : public MediaServer
     Q_OBJECT
     QML_ELEMENT
 
+    // the servers this account can use, its own and others' shared with it:
+    // [{ id, name, owned, owner (who shares it), online (as plex.tv last
+    // heard), current }], online ones first
+    Q_PROPERTY(QVariantList servers READ servers NOTIFY stateChanged)
+
 public:
     explicit PlexClient(QObject *parent = nullptr);
 
     QString service() const override { return QStringLiteral("Plex"); }
     bool signedIn() const override { return !m_userToken.isEmpty(); }
+    QVariantList servers() const;
 
     void start() override;
     void cancelSignIn() override;
     void signOut() override;
+    // switch to another of servers (kept once it answers)
+    Q_INVOKABLE void useServer(const QString &id);
 
     void libraries(const QJSValue &callback) override;
     void continueWatching(const QJSValue &callback) override;
@@ -48,7 +56,7 @@ private:
     QNetworkRequest request(const QUrl &url, const QString &token) const;
     void pollPin();
     void findServer();
-    void tryConnections(const QVariantList &candidates, const QString &name, const QString &token);
+    void tryConnections(const QVariantList &candidates, const QString &id, const QString &name, const QString &token);
     // GET a server path; done(MediaContainer) or fails the callback
     void get(const QString &path, const QJSValue &callback, const std::function<void(const QVariantMap &)> &done);
     // a container's Metadata as items
@@ -61,6 +69,11 @@ private:
     // the chosen server: its address and the token for it
     QString m_baseUrl;
     QString m_serverToken;
+    QString m_serverId;
+    // plex.tv's list of servers (resources that provide "server")
+    QVariantList m_resources;
+    // a server asked for by useServer(), until it answers or fails
+    QString m_wanted;
     // sign-in
     qint64 m_pinId = 0;
     QTimer m_pinPoll;

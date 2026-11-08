@@ -7,6 +7,7 @@
 #include <QSettings>
 #include <QSysInfo>
 #include <QUrlQuery>
+#include <algorithm>
 #include <QUuid>
 #include <memory>
 
@@ -175,11 +176,39 @@ void PlexClient::signOut()
     m_userToken.clear();
     setServer({}, {});
     m_serverName.clear();
+    m_serverId.clear();
+    m_resources.clear();
+    m_wanted.clear();
     m_linkCode.clear();
     QSettings settings;
     settings.remove("plex/token");
     settings.remove("plex/server");
     setState("signedOut");
+}
+
+QVariantList PlexClient::servers() const
+{
+    QVariantList out;
+    for (const QVariant &v : m_resources) {
+        const QVariantMap r = v.toMap();
+        const QString id = r.value("clientIdentifier").toString();
+        out.append(QVariantMap{ { "id", id }, { "name", r.value("name").toString() },
+                                { "owned", r.value("owned").toBool() },
+                                { "owner", r.value("sourceTitle").toString() },
+                                { "online", r.value("presence").toBool() },
+                                { "current", id == m_serverId && m_state == "ready" } });
+    }
+    std::stable_partition(out.begin(), out.end(), [](const QVariant &v) { return v.toMap().value("online").toBool(); });
+    return out;
+}
+
+void PlexClient::useServer(const QString &id)
+{
+    if (id == m_serverId && m_state == "ready")
+        return;
+    ++m_generation;
+    m_wanted = id;
+    findServer();
 }
 
 void PlexClient::findServer()
@@ -205,16 +234,19 @@ void PlexClient::findServer()
             setState("error", QStringLiteral("Can't reach plex.tv"));
             return;
         }
-        // the server used last, else the account's own, else any shared one
+        // the server asked for, else the one used last, else the account's
+        // own, else any shared one
         const QString saved = QSettings().value("plex/server").toString();
         QVariantMap chosen;
         int best = -1;
+        m_resources.clear();
         for (const QVariant &v : parseJson(reply).toList()) {
             const QVariantMap r = v.toMap();
             if (!r.value("provides").toString().split(',').contains("server"))
                 continue;
-            const int rank = r.value("clientIdentifier").toString() == saved ? 2
-                : r.value("owned").toBool() ? 1 : 0;
+            m_resources.append(r);
+            const QString id = r.value("clientIdentifier").toString();
+            const int rank = id == m_wanted ? 3 : id == saved ? 2 : r.value("owned").toBool() ? 1 : 0;
             if (rank > best) {
                 best = rank;
                 chosen = r;
@@ -246,19 +278,20 @@ void PlexClient::findServer()
             return a.toMap().value("rank").toInt() < b.toMap().value("rank").toInt();
         });
         const QString token = chosen.value("accessToken").toString();
-        tryConnections(candidates, chosen.value("name").toString(), token.isEmpty() ? m_userToken : token);
-        QSettings().setValue("plex/server", chosen.value("clientIdentifier").toString());
+        tryConnections(candidates, chosen.value("clientIdentifier").toString(), chosen.value("name").toString(),
+                       token.isEmpty() ? m_userToken : token);
     });
 }
 
 // Asks every address at once; the best-ranked that answers wins as soon as
 // every better one has failed.
-void PlexClient::tryConnections(const QVariantList &candidates, const QString &name, const QString &token)
+void PlexClient::tryConnections(const QVariantList &candidates, const QString &id, const QString &name,
+                                const QString &token)
 {
     const quint64 gen = m_generation;
     // per candidate: 0 waiting, 1 answered, -1 failed
     auto results = std::make_shared<QVector<int>>(candidates.size(), 0);
-    auto decide = [this, candidates, results, name, token, gen] {
+    auto decide = [this, candidates, results, id, name, token, gen] {
         if (gen != m_generation || m_state != "connecting")
             return;
         for (int i = 0; i < candidates.size(); ++i) {
@@ -267,7 +300,10 @@ void PlexClient::tryConnections(const QVariantList &candidates, const QString &n
             if ((*results)[i] == 1) {
                 const QVariantMap c = candidates[i].toMap();
                 setServer(c.value("uri").toString(), token);
+                m_serverId = id;
                 m_serverName = name;
+                m_wanted.clear();
+                QSettings().setValue("plex/server", id); // kept once it answers
                 qInfo("plex: using %s (%s)", qPrintable(name), qPrintable(c.value("kind").toString()));
                 setState("ready");
                 return;

@@ -35,6 +35,9 @@ FocusScope {
     readonly property bool plex: server.service === "Plex"
     // the server's own sign-in step is showing
     readonly property bool ownSignIn: !["signedOut", "linking", "connecting", "ready", "error"].includes(server.state)
+    // Plex: the server switched away from ({ id, name }), to go back to if
+    // the new one can't be reached
+    property var switchedFrom: null
 
     function open() {
         visible = true
@@ -63,6 +66,8 @@ FocusScope {
     Connections {
         target: root.server
         function onStateChanged() {
+            if (root.ready)
+                root.switchedFrom = null
             if (root.visible && root.ready && !root.pages.length)
                 root.showHome()
             if (!root.ready && root.visible)
@@ -138,7 +143,7 @@ FocusScope {
     }
 
     // "Continue watching" (when there's something), then the film and show
-    // libraries
+    // libraries, then the other servers there are (Plex: shared ones)
     function loadHome(p) {
         load(p, cb => server.libraries(cb), libs => {
             server.continueWatching(deck => {
@@ -149,7 +154,19 @@ FocusScope {
                                   .concat(current.items.filter(r => !r.deck)))
             })
             return libs.map(l => ({ label: l.title, detail: l.type === "movie" ? "Films" : "TV shows", library: l.id }))
+                .concat(plex && server.servers.length > 1
+                        ? [{ label: "Other servers", detail: server.servers.length - 1 + "", servers: true }] : [])
         })
+    }
+
+    // Plex: the servers to switch to
+    function serverRows() {
+        return server.servers.map(s => ({
+            label: s.name,
+            detail: (s.current ? "Open  ·  " : !s.online ? "Offline  ·  " : "")
+                    + (s.owned ? "Yours" : s.owner ? "Shared by " + s.owner : "Shared"),
+            serverId: s.id, current: s.current
+        }))
     }
 
     // the current page's content again, keeping its place (after playing)
@@ -182,7 +199,17 @@ FocusScope {
             return
         const p = page
         p.index = p.kind === "grid" ? grid.currentIndex : list.currentIndex
-        if (p.kind === "home")
+        if (r.servers)
+            push({ kind: "list", title: "Plex servers", subtitle: "Yours and those shared with you", items: serverRows() })
+        else if (r.serverId !== undefined) {
+            if (r.current) {
+                back()
+                return
+            }
+            switchedFrom = { id: server.servers.find(s => s.current).id, name: server.serverName }
+            pages = [] // the new server's home, once it answers
+            server.useServer(r.serverId)
+        } else if (p.kind === "home")
             openPage({ kind: "grid", title: r.label, subtitle: server.serverName, deck: !!r.deck, library: r.library })
         else if (r.type === "show")
             openPage({ kind: "list", title: r.title, subtitle: r.year ? r.year + "" : "", parent: r })
@@ -270,6 +297,9 @@ FocusScope {
         } else if (event.key === Qt.Key_I && server.state === "error" && !plex) {
             server.changeServer()
             event.accepted = true
+        } else if (event.key === Qt.Key_I && server.state === "error" && switchedFrom) {
+            server.useServer(switchedFrom.id)
+            event.accepted = true
         }
     }
 
@@ -288,7 +318,7 @@ FocusScope {
             wrapMode: Text.Wrap
             text: root.server.state === "linking" ? "Sign in to " + (root.plex ? "Plex" : root.server.serverName)
                 : root.server.state === "error" ? root.server.message
-                : root.plex ? "Finding your Plex server…" : "Connecting to Jellyfin…"
+                : root.plex ? "Connecting to Plex…" : "Connecting to Jellyfin…"
             color: Theme.text
             font.pixelSize: Theme.fontHuge
             font.weight: Font.DemiBold
@@ -545,7 +575,8 @@ FocusScope {
         visible: !root.ownSignIn
         hints: root.server.state === "error"
             ? [{ buttons: ["south"], text: "Try again" }].concat(
-                root.plex ? [] : [{ buttons: ["north"], text: "Another server" }],
+                root.plex ? (root.switchedFrom ? [{ buttons: ["north"], text: "Back to " + root.switchedFrom.name }] : [])
+                          : [{ buttons: ["north"], text: "Another server" }],
                 root.server.signedIn ? [{ buttons: ["start"], text: "Sign out" }] : [],
                 [{ buttons: ["east"], text: "Back" }])
             : root.server.state === "linking"
