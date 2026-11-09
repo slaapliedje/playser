@@ -104,7 +104,7 @@ FocusScope {
         function onDrivesChanged() {
             // ejected while open: back home, letting go of the drive for
             // the next disc
-            if (player.active && root.discGone(player.drive))
+            if (player.active && !player.waking && root.discGone(player.drive))
                 player.close(true)
             if (discScreen.visible && root.discGone(discScreen.drive))
                 discScreen.close()
@@ -136,6 +136,18 @@ FocusScope {
         // first run, or something Blu-ray playback needs went missing
         if (!settings.setupSeen || (system.opticalDrives > 0 && !system.ready))
             showSetup()
+    }
+
+    // going to sleep mid-film: paused, its place kept (and told to the
+    // media server), and opened there again on waking
+    SleepWatcher {
+        onSleeping: {
+            player.sleep()
+            const server = player.active && player.drive ? root.libraryServer(player.drive.library) : null
+            if (server && !player.opening && player.entry.itemId)
+                server.report(player.entry.itemId, "paused", root.mpv.position, root.mpv.duration)
+        }
+        onWoke: player.wake()
     }
 
     // Steam's Game Mode screensaver would otherwise cover the film

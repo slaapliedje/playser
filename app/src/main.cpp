@@ -23,6 +23,7 @@
 #include "Gamepad.h"
 #include "Mpv.h"
 #include "MediaServer.h"
+#include "SleepWatcher.h"
 #include "UiRenderer.h"
 
 // SIGTERM (Steam's "Exit game") and SIGINT quit through the event loop, so
@@ -208,9 +209,11 @@ static int qtKeyForMpv(const QString &name)
 }
 
 // --script "2,down,enter,3,shot,quit": numbers wait (seconds), names press
-// keys ("type:abc" types), "shot" saves the UI layer and an mpv window screenshot, "quit"
-// exits. For headless UI tests.
-static void runScript(UiRenderer *ui, Mpv *mpv, QStringList steps, const QString &shotDir, int shot = 0)
+// keys ("type:abc" types), "shot" saves the UI layer and an mpv window screenshot,
+// "suspend" and "resume" act as if the system slept and woke, "quit" exits.
+// For headless UI tests.
+static void runScript(UiRenderer *ui, Mpv *mpv, SleepWatcher *sleep, QStringList steps, const QString &shotDir,
+                      int shot = 0)
 {
     static const QHash<QString, int> keys = {
         { "up", Qt::Key_Up }, { "down", Qt::Key_Down }, { "left", Qt::Key_Left },
@@ -224,7 +227,7 @@ static void runScript(UiRenderer *ui, Mpv *mpv, QStringList steps, const QString
         bool isNumber = false;
         const double secs = step.toDouble(&isNumber);
         if (isNumber) {
-            QTimer::singleShot(int(secs * 1000), ui, [=] { runScript(ui, mpv, steps, shotDir, shot); });
+            QTimer::singleShot(int(secs * 1000), ui, [=] { runScript(ui, mpv, sleep, steps, shotDir, shot); });
             return;
         }
         if (step == "quit") {
@@ -238,10 +241,12 @@ static void runScript(UiRenderer *ui, Mpv *mpv, QStringList steps, const QString
             qInfo("script: saved %s", qPrintable(base));
             // mpv captures asynchronously: give it time before the next
             // step changes what's on screen
-            QTimer::singleShot(300, ui, [=] { runScript(ui, mpv, steps, shotDir, shot); });
+            QTimer::singleShot(300, ui, [=] { runScript(ui, mpv, sleep, steps, shotDir, shot); });
             return;
         } else if (keys.contains(step)) {
             ui->deliverKey(keys.value(step));
+        } else if ((step == "suspend" || step == "resume") && sleep) {
+            sleep->simulate(step == "suspend");
         } else if (step.startsWith("type:")) { // a keyboard's typing
             for (const QChar c : step.mid(5))
                 ui->deliverText(c);
@@ -333,7 +338,8 @@ int main(int argc, char *argv[])
     gamepad.start();
 
     if (args.isSet("script"))
-        runScript(&ui, &mpv, args.value("script").split(','), args.value("shot-dir"));
+        runScript(&ui, &mpv, root->findChild<SleepWatcher *>(), args.value("script").split(','),
+                  args.value("shot-dir"));
 
     const int ret = app.exec();
     QMetaObject::invokeMethod(rootItem, "shutdown");

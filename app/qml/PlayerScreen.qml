@@ -28,6 +28,15 @@ FocusScope {
     property real queueStart: 0
     // from play() until mpv has opened the title; a UHD takes ~20 s
     property bool opening: false
+    // what playMenu() read the disc from, for opening it again
+    property string menuPath: ""
+    // where it was when the system went to sleep, until it wakes: { place,
+    // menus, index }; a drive or a stream doesn't carry on after sleep, so
+    // waking opens it again there
+    property var sleptAt: null
+    // from sleep until a little after waking: the drive may seem empty a
+    // moment as it comes back, which isn't the disc being taken out
+    property bool waking: false
     // wasExtra: it played one of the disc's extras
     signal closed(bool wasExtra)
     // an entry played through mpv stopped where it was (position, of
@@ -46,9 +55,9 @@ FocusScope {
             const m = /^bd:\/\/mpls\/(\d+)$/.exec(e.url || "")
             return m ? parseInt(m[1]) : -1
         }) : []
+        queueStart = start || 0
         if (playlists.length && playlists.every(p => p >= 0)) {
             index = i || 0
-            queueStart = start || 0
             opening = true
             nav.openPlaylists(d.device, playlists, index, start || 0)
         } else {
@@ -61,6 +70,7 @@ FocusScope {
     // (onOpenFailed)
     function playMenu(d, path) {
         drive = d
+        menuPath = path || ""
         queue = [{ url: "discnav://", title: displayTitle }]
         index = 0
         active = true
@@ -82,29 +92,74 @@ FocusScope {
         showOsd()
     }
 
-    // url: what to play to resume (a title through menus resumes as that
-    // title, without the menus: a DVD's title, a Blu-ray's playlist)
-    function saveResume() {
-        if (opening || entry.extra || (drive && drive.library)) // a media server keeps its own
-            return
-        if (navigating && !nav.menus) {
+    // where it's playing: { index, position, url, title }, or null (still
+    // opening, or in a disc's menu). url: what to play to come back (a
+    // title through menus comes back as that title, without the menus: a
+    // DVD's title, a Blu-ray's playlist)
+    function place() {
+        if (opening)
+            return null
+        if (navigating) {
             const p = nav.position()
-            if (p.title)
-                Resume.save(resumeKey, { index: index, position: Math.floor(p.seconds), url: entry.url,
-                                         title: entry.title || "" })
-        } else if (navigating) {
-            const p = nav.position() // nothing to save in a menu
-            if (p.title) {
-                const url = nav.format === "bluray" ? "bd://mpls/" + p.playlist
-                                                    : "dvd://" + (p.title - 1) // mpv counts titles from 0
-                const item = ((drive.disc && drive.disc.items) || []).find(i => i.url === url)
-                Resume.save(resumeKey, { index: 0, position: Math.floor(p.seconds), url: url,
-                                         title: item ? item.title : "" })
-            }
-        } else if (root.mpv.duration > 0) {
-            Resume.save(resumeKey, { index: index, position: Math.floor(root.mpv.position), url: entry.url,
-                                     title: entry.title || "" })
+            if (!p.title) // nothing to keep in a menu
+                return null
+            if (!nav.menus)
+                return { index: index, position: Math.floor(p.seconds), url: entry.url, title: entry.title || "" }
+            const url = nav.format === "bluray" ? "bd://mpls/" + p.playlist
+                                                : "dvd://" + (p.title - 1) // mpv counts titles from 0
+            const item = ((drive.disc && drive.disc.items) || []).find(i => i.url === url)
+            return { index: 0, position: Math.floor(p.seconds), url: url, title: item ? item.title : "" }
         }
+        if (root.mpv.duration > 0)
+            return { index: index, position: Math.floor(root.mpv.position), url: entry.url, title: entry.title || "" }
+        return null
+    }
+
+    function saveResume() {
+        if (entry.extra || (drive && drive.library)) // a media server keeps its own
+            return
+        const p = place()
+        if (p)
+            Resume.save(resumeKey, p)
+    }
+
+    // the system is going to sleep: pause, and keep the place
+    function sleep() {
+        if (!active || sleptAt)
+            return
+        waking = true
+        wakingTimer.stop()
+        mpv.setMpvProperty("pause", true)
+        saveResume()
+        sleptAt = { place: place(), menus: navigating && nav.menus, index: index }
+    }
+
+    // and woke: open it again where it was, paused (in a disc's menu, or
+    // still opening, it starts over)
+    function wake() {
+        const s = sleptAt
+        sleptAt = null
+        wakingTimer.restart()
+        if (!s || !active)
+            return
+        const d = drive, q = queue, p = s.place
+        if (navigating)
+            nav.close() // what was open can't read the drive any more
+        if (s.menus && !p) {
+            mpv.setMpvProperty("pause", false) // a menu paused wouldn't move
+            playMenu(d, menuPath)
+            return
+        }
+        if (s.menus)
+            play(d, [{ url: p.url, title: p.title }], 0, p.position)
+        else
+            play(d, q, p ? p.index : s.index, p ? p.position : queueStart)
+        showNotice("Paused while the system slept")
+    }
+    Timer {
+        id: wakingTimer
+        interval: 20000
+        onTriggered: root.waking = false
     }
 
     // removed: the disc was taken out, so there's no position to read
@@ -147,7 +202,8 @@ FocusScope {
         }
         function onAudioProblem(message) { root.showNotice(message) }
         function onEndFile(reason) {
-            if (!root.active || root.navigating) // DiscNav loads the next segment
+            // DiscNav loads the next segment; asleep, waking opens it again
+            if (!root.active || root.navigating || root.sleptAt)
                 return
             if (reason === "eof")
                 root.entryStopped(root.entry, root.mpv.duration, root.mpv.duration, true)
@@ -186,7 +242,7 @@ FocusScope {
                 root.opening = false
         }
         function onStopped() {
-            if (!root.active)
+            if (!root.active || root.sleptAt) // asleep: waking opens it again
                 return
             if (!root.nav.menus && root.index === root.queue.length - 1) {
                 Resume.clear(root.resumeKey) // watched to the end

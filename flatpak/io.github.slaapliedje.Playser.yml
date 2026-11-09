@@ -30,6 +30,7 @@ finish-args:
   - --filesystem=/media:ro                  # USB drives on desktops (file browser)
   - --filesystem=home:ro                    # the user's videos (file browser)
   - --talk-name=org.freedesktop.ScreenSaver   # inhibit during playback
+  - --system-talk-name=org.freedesktop.login1  # pause and keep the place before sleep
   # gamescope's Vulkan WSI layer talks to gamescope over this socket; without
   # it HDR swapchains fail ("Hooking has failed somewhere!")
   - --filesystem=xdg-run/gamescope-0

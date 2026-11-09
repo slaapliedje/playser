@@ -44,6 +44,7 @@ qt_add_qml_module(playser
         src/UiRenderer.h src/UiRenderer.cpp
         src/OverlayEncoder.h src/OverlayEncoder.cpp
         src/ScreenSaverInhibitor.h src/ScreenSaverInhibitor.cpp
+        src/SleepWatcher.h src/SleepWatcher.cpp
         src/DiscMonitor.h src/DiscMonitor.cpp
         src/DiscIndex.h src/DiscIndex.cpp
         src/DiscFs.h src/DiscFs.cpp

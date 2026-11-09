@@ -600,8 +600,12 @@ Input (applies now, whatever the channel):
 - Settings screen (beyond Setup): output modes, passthrough, menus on/off,
   subtitles default.
 - Handheld layout (Deck 1280×800, Legion Go 2) and docked/undocked change.
-- Sleep and wake in Game Mode mid-film; eject from the controller; error
-  screens for unreadable discs.
+- Sleep and wake in Game Mode mid-film: ✅ 2026-11-08, paused with its
+  place kept before sleep (a logind delay lock; the media server told),
+  opened again there on waking, paused (a drive or a stream doesn't carry
+  on after sleep). A title played through a disc's menus comes back as
+  that title, without the menus; in a menu the disc starts over.
+- Eject from the controller; error screens for unreadable discs.
 
 ## Repo layout
 
