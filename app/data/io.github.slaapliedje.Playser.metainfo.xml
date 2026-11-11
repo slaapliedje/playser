@@ -34,6 +34,11 @@
     </p>
   </description>
   <releases>
+    <release version="0.4.0" date="2026-11-10">
+      <description>
+        <p>Search Plex and Jellyfin for films, shows and episodes with the on-screen keyboard. Plex servers shared with you can be chosen as well as your own. Going to sleep mid-film pauses it and keeps its place, and waking opens it again there.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-11-05">
       <description>
         <p>Play from Plex and Jellyfin servers, with resume points and watched marks kept on the server, and from your own files: videos, DVD and Blu-ray folders and ISO images. Ejecting the playing disc goes back home.</p>
